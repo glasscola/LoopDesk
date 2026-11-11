@@ -35,7 +35,7 @@ internal static class Storage {
         string tmp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
         try {
             using(var f=File.Create(tmp)) new DataContractJsonSerializer(typeof(T)).WriteObject(f,value);
-            if(File.Exists(path)) File.Replace(tmp,path,null);else File.Move(tmp,path);
+            if(File.Exists(path)) File.Replace(tmp,path,path+".bak");else File.Move(tmp,path);
         } finally {if(File.Exists(tmp))File.Delete(tmp);}
     }
     internal static void Validate(Macro m) {
@@ -44,6 +44,7 @@ internal static class Storage {
         if(m.Repeats<0 || m.Repeats>100000 || m.Interval<0 || m.Interval>86400000 || Double.IsNaN(m.Speed) || m.Speed<.1 || m.Speed>8 || !new[]{"Both","Mouse","Keyboard"}.Contains(m.Input))
             throw new InvalidDataException("반복, 속도 또는 입력 범위가 올바르지 않습니다.");
         foreach(var s in m.Steps) {
+            ValidateStep(s);
             if(s==null || !Step.Kinds.Contains(s.Kind) || s.Delay<0 || s.Delay>86400000 || s.Timeout<0 || s.Timeout>86400000 ||
                 s.RepeatCount<0 || s.RepeatCount>100000 ||
                 s.RandomMin<0 || s.RandomMax<s.RandomMin || s.RandomMax>100 || s.RandomDirection<0 || s.RandomDirection>2 ||
@@ -56,6 +57,25 @@ internal static class Storage {
                 throw new InvalidDataException("키 입력 설정을 확인하세요.");
             if(s.Kind=="MouseTap" && (s.Code<1 || s.Code>5))throw new InvalidDataException("마우스 버튼을 확인하세요.");
         }
+    }
+    internal static void ValidateStep(Step s,int depth=0) {
+        if(s==null||depth>8||!Step.Kinds.Contains(s.Kind)||s.Delay<0||s.Delay>86400000||s.Timeout<0||s.Timeout>86400000||
+            s.RepeatCount<0||s.RepeatCount>100000||s.HoldMs<0||s.HoldMs>86400000||
+            s.RandomMin<0||s.RandomMax<s.RandomMin||s.RandomMax>100||s.RandomDirection<0||s.RandomDirection>2)
+            throw new InvalidDataException("동작의 시간이나 반복 횟수가 올바르지 않습니다.");
+        if(s.Kind=="Group") {
+            if(s.Children==null||s.Children.Count<1||s.Children.Count>200100)throw new InvalidDataException("묶음 안의 동작을 확인하세요.");
+            foreach(var child in s.Children) {
+                ValidateStep(child,depth+1);
+                if(child.Then!=0||child.Else!=0||child.Kind=="Jump")throw new InvalidDataException("묶음 안에는 단계 이동을 넣을 수 없습니다.");
+            }
+        }
+        if(s.Kind=="KeyTap"||s.Kind=="KeyDown"||s.Kind=="KeyUp") {
+            if(s.Code<1||s.Code>254||s.Scan<0||s.Scan>255||s.Modifiers!=null&&s.Modifiers.Any(k=>!InputPicker.IsModifier(k)))
+                throw new InvalidDataException("입력할 키를 확인하세요.");
+        }
+        if((s.Kind=="MouseTap"||s.Kind=="Down"||s.Kind=="Up")&&(s.Code<1||s.Code>5))
+            throw new InvalidDataException("마우스 버튼을 확인하세요.");
     }
     internal static List<Dictionary<string,string>> ReadCsv(string path) {
         var rows=new List<Dictionary<string,string>>();

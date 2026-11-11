@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -14,14 +14,7 @@ namespace LoopDesk {
 internal sealed partial class Desk {
     internal void RenderInput(string path) {
         new System.Windows.Interop.WindowInteropHelper(this).EnsureHandle();
-        var picker=new InputPicker(this,new Step{Kind="KeyTap",Code=65},PickPoint);
-        var content=(FrameworkElement)picker.Content;
-        var size=new Size(1120,640);
-        content.Measure(size);content.Arrange(new Rect(size));content.UpdateLayout();
-        var bmp=new RenderTargetBitmap((int)size.Width,(int)size.Height,96,96,PixelFormats.Pbgra32);
-        bmp.Render(content);
-        var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bmp));
-        using(var file=File.Create(path))png.Save(file);
+        Render(path,1220,880,true);
     }
     Action<Native.Point,IntPtr> pointChoice;
     Window pointHost,pointHint;
@@ -31,7 +24,7 @@ internal sealed partial class Desk {
 
     void ShowAddMenu() {
         var menu=new ContextMenu{PlacementTarget=F<Button>("AddStep"),Placement=PlacementMode.Bottom,FontFamily=FontFamily,FontSize=FontSize};
-        AddMenuItem(menu,"키·마우스 입력…",()=>{var input=ChooseInput(null);if(input!=null)InsertStep(input);});
+        
         foreach(var kind in new[]{"Text","Move","Wait"})AddMenuItem(menu,new Step{Kind=kind}.Label,()=>InsertStep(new Step{Kind=kind,Delay=kind=="Wait"?500:0}));
         var advanced=new MenuItem{Header="고급 기능"};menu.Items.Add(advanced);
         foreach(var kind in new[]{"Click","Image","Pixel","OCR","Element","ElementText","Macro","Jump"})
@@ -51,17 +44,10 @@ internal sealed partial class Desk {
         var menu=grid.ContextMenu;
         if(menu==null)return;
         menu.Items.Clear();
+        FillEditMenu(menu);menu.Items.Add(new Separator());
         var row=grid.SelectedItem as Row;
         if(row==null||Busy)return;
         AddMenuItem(menu,row.Step.Skip?"다시 사용":"잠시 사용 안 함",()=>Mutate(()=>row.Step.Skip=!row.Step.Skip,row.Number-1));
-    }
-    Step ChooseInput(Step existing) {
-        if(Busy)return null;
-        capturing=true;Unregister();
-        try {
-            var picker=new InputPicker(this,existing,PickPoint);
-            return picker.ShowDialog()==true?picker.Result:null;
-        } finally {capturing=false;Register();Buttons();}
     }
     int[] ReadGlobalRange() {
         int? min=profile.GlobalRandomMin,max=profile.GlobalRandomMax;
@@ -69,14 +55,22 @@ internal sealed partial class Desk {
     }
     void RandomSettings() {
         if(Busy) {Note("실행을 마친 뒤 딜레이 랜덤 설정을 열어주세요.");return;}
+        CloseInput();
         var panel=new StackPanel{Margin=new Thickness(18)};
         var dialog=new Window{Owner=this,Title="딜레이 랜덤",Width=400,SizeToContent=SizeToContent.Height,
             WindowStartupLocation=WindowStartupLocation.CenterOwner,ShowInTaskbar=false,Content=panel,FontFamily=FontFamily,FontSize=FontSize};
         var saved=ReadGlobalRange()??new[]{10,50};
-        var enabled=Check(panel,"전체 동작 사이 딜레이에 적용",randomOn);
+        var enabled=Check(panel,"모든 매크로에 랜덤 대기 적용",randomOn);
         var min=Field(panel,"최소 변동 (%)",saved[0].ToString(),3);
         var max=Field(panel,"최대 변동 (%)",saved[1].ToString(),3);
-        Label(panel,"0.10초가 40% 늘어나면 0.14초가 됩니다. 구간을 지날 때마다 변동률과 방향을 새로 정합니다.",true);
+        var preview=new TextBlock{TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,12,0,4)};panel.Children.Add(preview);
+        Action update=()=>{
+            int low,high;
+            preview.Text=int.TryParse(min.Text,out low)&&int.TryParse(max.Text,out high)&&low>=0&&high>=low&&high<=100?
+                "예: 0.1초 → "+(0.1*(100-high)/100).ToString("0.###")+"~"+(0.1*(100+high)/100).ToString("0.###")+"초 범위\n매번 "+low+"~"+high+"% 빠르게 또는 느리게 적용":
+                "변동률을 0~100% 사이로 입력하세요.";
+        };
+        min.TextChanged+=(a,b)=>update();max.TextChanged+=(a,b)=>update();update();
         var message=new TextBlock{Foreground=Brushes.DarkRed,TextWrapping=TextWrapping.Wrap};panel.Children.Add(message);
         var save=new Button{Content="저장",Padding=new Thickness(12,6,12,6),HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,10,0,0)};
         panel.Children.Add(save);
@@ -84,7 +78,7 @@ internal sealed partial class Desk {
             try {
                 int low=Int(min,0,100,"최소 변동"),high=Int(max,low,100,"최대 변동");
                 profile.GlobalRandomMin=low;profile.GlobalRandomMax=high;globalRandomRange=new[]{low,high};
-                randomOn=enabled.IsChecked==true;profile.RandomOff=!randomOn;Save();dialog.DialogResult=true;
+                randomOn=enabled.IsChecked==true;profile.RandomOff=!randomOn;Save();dialog.DialogResult=true;SettingsPanel();
             } catch(Exception e){message.Text=e.Message;}
         };
         capturing=true;Unregister();

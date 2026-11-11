@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -18,6 +18,7 @@ public sealed class Step {
     public int Code {get;set;} public int Scan {get;set;} public bool Extended {get;set;}
     public int Delay {get;set;} public int Timeout {get;set;}
     public int RepeatCount {get;set;}
+    public List<Step> Children {get;set;}
     public int EffectiveRepeats {get{return Math.Max(1,RepeatCount);}}
     public bool RandomDelay {get;set;}
     public int RandomMin {get;set;} public int RandomMax {get;set;}
@@ -30,11 +31,12 @@ public sealed class Step {
     public int Then {get;set;} public int Else {get;set;}
     public string Value {get;set;} public bool Skip {get;set;}
     public Step() { Kind="Wait"; Value=""; Timeout=5000; }
-    public Step Copy() { return (Step)MemberwiseClone(); }
-    public string Label { get { string[] names={"대기","마우스 이동","버튼 누름","버튼 뗌","휠 스크롤","가로 스크롤","키 누름","키 뗌","문장 입력","지정한 곳 클릭","버튼 그림으로 찾기","색상 기다리기","글자 기다리기","버튼 선택","다른 매크로 실행","조건에 따라 이동","입력칸 선택","키 입력","마우스 클릭"};
+    public Step Copy() {var copy=(Step)MemberwiseClone();if(Children!=null)copy.Children=Children.Select(c=>c.Copy()).ToList();return copy;}
+    public string Label { get { string[] names={"대기","마우스 이동","버튼 누름","버튼 뗌","휠 스크롤","가로 스크롤","키 누름","키 뗌","문장 입력","지정한 곳 클릭","버튼 그림으로 찾기","색상 기다리기","글자 기다리기","버튼 선택","다른 매크로 실행","조건에 따라 이동","입력칸 선택","키 입력","마우스 클릭","동작 묶음"};
         int i=Array.IndexOf(Kinds,Kind); return i<0?Kind:names[i]; } }
-    public static readonly string[] Kinds={"Wait","Move","Down","Up","Wheel","HWheel","KeyDown","KeyUp","Text","Click","Image","Pixel","OCR","Element","Macro","Jump","ElementText","KeyTap","MouseTap"};
+    public static readonly string[] Kinds={"Wait","Move","Down","Up","Wheel","HWheel","KeyDown","KeyUp","Text","Click","Image","Pixel","OCR","Element","Macro","Jump","ElementText","KeyTap","MouseTap","Group"};
     public string Detail {get {
+        if (Kind=="Group")return (Children==null?0:Children.Count)+"개 동작";
         if (Kind=="KeyTap") return String.Join("+",(Modifiers??new int[0]).Select(k=>InputPicker.KeyName(k,false)).Concat(new[]{InputPicker.KeyName(Code,Extended)}))+
             (HoldMs>0?" · "+(HoldMs/1000m)+"초":" · 한 번");
         if (Kind=="MouseTap") return new[]{"","왼쪽","오른쪽","휠","뒤로","앞으로"}[Math.Max(0,Math.Min(5,Code))]+(DoubleClick?" 더블클릭":" 클릭")+
@@ -66,6 +68,8 @@ internal static class Native {
     [StructLayout(LayoutKind.Sequential)] internal struct KeyInput {public ushort Vk,Scan;public uint Flags,Time;public UIntPtr Extra;}
     [StructLayout(LayoutKind.Explicit)] internal struct Union { [FieldOffset(0)] public MouseInput M; [FieldOffset(0)] public KeyInput K; }
     [StructLayout(LayoutKind.Sequential)] internal struct Input { public uint Type;public Union Data; }
+    [DllImport("user32")] internal static extern int GetWindowLong(IntPtr h,int index);
+    [DllImport("user32")] internal static extern int SetWindowLong(IntPtr h,int index,int value);
     internal delegate IntPtr Hook(int code,IntPtr message,IntPtr data);
     [DllImport("user32",SetLastError=true)] internal static extern IntPtr SetWindowsHookEx(int id,Hook cb,IntPtr module,uint thread);
     [DllImport("user32")] internal static extern bool UnhookWindowsHookEx(IntPtr h);
@@ -219,6 +223,7 @@ internal sealed class Player {
     readonly List<Macro> macros;
     readonly Action<int,int,string> progress;
     readonly Dictionary<string,Step> held=new Dictionary<string,Step>();
+    internal Action<int,int> Repetition;
     int cycle,lastStep;
     string lastMacro;
     readonly IntPtr own;
@@ -301,7 +306,7 @@ internal sealed class Player {
                 for(int repetition=0;repetition<s.EffectiveRepeats&&found;repetition++) {
                     Wait(0);
                     if(++operations>Math.Max(1000000,m.Steps.Count*2)) throw new InvalidOperationException("분기·반복 횟수 한도를 넘었습니다.");
-                    lastStep=i+1;lastMacro=m.Name;progress(lastStep,cycle,m.Name);
+                    lastStep=i+1;lastMacro=m.Name;if(Repetition!=null)Repetition(repetition+1,s.EffectiveRepeats);progress(lastStep,cycle,m.Name);
                     int variation=0;
                     if((randomRange!=null || s.RandomDelay) && (randomEnabled==null || randomEnabled()) &&
                         (held.Count==0 || randomRange==null && s.RandomWhileHeld)) {
@@ -311,7 +316,11 @@ internal sealed class Player {
                     }
                     Wait(DelayMs(s.Delay,m.Speed,variation));
                     var h=Target(m,expected);
-                    if(s.Kind=="KeyTap") {
+                    if(s.Kind=="Group") {
+                        if(held.Count>0)throw new InvalidOperationException("키나 마우스를 누른 상태에서는 묶음 반복을 시작할 수 없습니다.");
+                        var child=new Macro{Name=m.Name+" / 묶음",Steps=s.Children,Repeats=1,Input=m.Input,Speed=m.Speed,Process=m.Process,WindowCoords=m.WindowCoords};
+                        Execute(child,-1,-1,depth+1,row);
+                    } else if(s.Kind=="KeyTap") {
                         if(m.Input!="Mouse") TapKeys(s);
                     } else if(s.Kind=="KeyDown" || s.Kind=="KeyUp") {
                         if(m.Input!="Mouse") {

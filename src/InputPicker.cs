@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -8,7 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 
 namespace LoopDesk {
-internal sealed class InputPicker : Window {
+internal sealed class InputPicker : UserControl {
     sealed class KeyCap {
         internal int Code;
         internal bool Extended;
@@ -22,7 +22,14 @@ internal sealed class InputPicker : Window {
     readonly Dictionary<Button,KeyCap> buttons=new Dictionary<Button,KeyCap>();
     readonly List<int> modifiers=new List<int>();
     readonly TextBlock summary;
-    readonly TextBox hold,notches;
+    readonly TextBox hold,notches,repeats,delay;
+    readonly ComboBox pressMode;
+    readonly Window owner;
+    readonly Action<Step> apply;
+    readonly Action dismiss;
+    readonly bool editing;
+    readonly Step originalStep;
+    WindowInteropHelperForPicker keySource;
     readonly StackPanel wheelFields;
     readonly CheckBox twice,currentPointer;
     readonly Action<Window,Action<Native.Point,IntPtr>> pickPoint;
@@ -84,57 +91,60 @@ internal sealed class InputPicker : Window {
         add(110,".",21.05,5.45,1,1,false);
         return caps;
     }
-    internal InputPicker(Window owner,Step original,Action<Window,Action<Native.Point,IntPtr>> picker) {
-        Owner=owner;pickPoint=picker;Title="LoopDesk · 키·마우스 입력";
-        Width=Math.Min(1160,SystemParameters.WorkArea.Width-24);
-        SizeToContent=SizeToContent.Height;MaxHeight=SystemParameters.WorkArea.Height-24;
-        WindowStartupLocation=WindowStartupLocation.CenterOwner;ShowInTaskbar=false;
-        FontFamily=owner.FontFamily;FontSize=14;Background=Pale;
-        var body=new StackPanel{Margin=new Thickness(20)};
-        Content=new ScrollViewer{Content=body,Background=Pale,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
-        body.Children.Add(new TextBlock{Text="키·마우스 입력",FontSize=24,FontWeight=FontWeights.Bold,Foreground=Ink});
-        body.Children.Add(new TextBlock{Text="108키 · 키를 클릭하거나 실제 키보드에서 누르세요.",Margin=new Thickness(0,5,0,12),TextWrapping=TextWrapping.Wrap});
+    internal InputPicker(Window host,Step original,Action<Window,Action<Native.Point,IntPtr>> picker,Action<Step> onApply,Action onDismiss) {
+        owner=host;pickPoint=picker;apply=onApply;dismiss=onDismiss;editing=original!=null;originalStep=original;
+        FontFamily=host.FontFamily;FontSize=13;Background=Brushes.White;Focusable=true;
+        var body=new Grid();
+        body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+        body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+        Content=body;
+        var heading=new DockPanel{Margin=new Thickness(0,0,0,8)};
+        var close=new Button{Content="닫기 ×",Padding=new Thickness(10,4,10,4),MinHeight=28,Margin=new Thickness(8,0,0,0)};
+        DockPanel.SetDock(close,Dock.Right);heading.Children.Add(close);close.Click+=(a,e)=>dismiss();
+        summary=new TextBlock{TextWrapping=TextWrapping.Wrap,FontWeight=FontWeights.SemiBold,FontSize=16,Foreground=Ink,VerticalAlignment=VerticalAlignment.Center};
+        heading.Children.Add(summary);body.Children.Add(heading);
+        var area=new Grid();Grid.SetRow(area,1);body.Children.Add(area);
+        area.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
+        area.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(232)});
+        var left=new StackPanel{Margin=new Thickness(0,0,16,0)};area.Children.Add(left);
         var canvas=new Canvas{Width=23.05*43,Height=6.45*43};
-        body.Children.Add(new Viewbox{Child=canvas,Stretch=Stretch.Uniform,StretchDirection=StretchDirection.DownOnly,HorizontalAlignment=HorizontalAlignment.Left});
+        left.Children.Add(new Viewbox{Child=canvas,Stretch=Stretch.Uniform,StretchDirection=StretchDirection.DownOnly,HorizontalAlignment=HorizontalAlignment.Stretch,MaxHeight=230});
         foreach(var cap in Layout) {
-            var b=new Button{Content=cap.Text,Width=cap.W*43-4,Height=cap.H*43-4,Padding=new Thickness(2),
-                FontSize=cap.Text.Length>=4?11:14,Focusable=false,Foreground=Ink,Background=Brushes.White,ToolTip=KeyName(cap.Code,cap.Extended)};
+            var b=new Button{Content=cap.Text,Width=cap.W*43-4,Height=cap.H*43-4,Padding=new Thickness(2),Margin=new Thickness(0),MinHeight=0,
+                FontSize=cap.Text.Length>=4?12:15,Focusable=false,Foreground=Ink,Background=Brushes.White,ToolTip=KeyName(cap.Code,cap.Extended)};
             System.Windows.Automation.AutomationProperties.SetName(b,KeyName(cap.Code,cap.Extended));
             Canvas.SetLeft(b,cap.X*43);Canvas.SetTop(b,cap.Y*43);canvas.Children.Add(b);buttons.Add(b,cap);
-            b.Click+=(a,e)=>SelectKey(cap.Code,cap.Extended,null);
+            b.Click+=(a,e)=>{Focus();SelectKey(cap.Code,cap.Extended,null);};
         }
-        var mouse=new WrapPanel{Margin=new Thickness(0,14,0,8)};body.Children.Add(mouse);
-        mouse.Children.Add(new TextBlock{Text="마우스",FontWeight=FontWeights.Bold,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)});
-        var mouseTop=new WrapPanel{Margin=new Thickness(6,5,0,8)};
-        mouse.Children.Add(new Border{BorderBrush=Teal,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(16,16,20,20),
-            Background=Brushes.White,Margin=new Thickness(0,0,10,6),Child=mouseTop});
-        MouseChoice(mouseTop,"왼쪽 클릭",1,0);MouseChoice(mouseTop,"휠 클릭",3,0);MouseChoice(mouseTop,"오른쪽 클릭",2,0);
-        MouseChoice(mouse,"휠 위로",0,1);MouseChoice(mouse,"휠 아래로",0,-1);
-        summary=new TextBlock{TextWrapping=TextWrapping.Wrap,FontWeight=FontWeights.Bold,Margin=new Thickness(0,5,0,8),Foreground=Ink};
-        body.Children.Add(summary);
-        keyboardOptions=new StackPanel{Orientation=Orientation.Horizontal};body.Children.Add(keyboardOptions);
-        hold=Number(keyboardOptions,"누르는 시간 (초, 0 = 한 번)","0");
-        mouseOptions=new StackPanel();body.Children.Add(mouseOptions);
-        var mouseFields=new WrapPanel();mouseOptions.Children.Add(mouseFields);
-        wheelFields=new StackPanel{Orientation=Orientation.Horizontal};mouseFields.Children.Add(wheelFields);
+        var mouse=new WrapPanel{Margin=new Thickness(0,7,0,0)};left.Children.Add(mouse);
+        MouseChoice(mouse,"왼쪽 클릭",1,0);MouseChoice(mouse,"휠 클릭",3,0);MouseChoice(mouse,"오른쪽 클릭",2,0);
+        MouseChoice(mouse,"휠 ↑",0,1);MouseChoice(mouse,"휠 ↓",0,-1);
+        left.Children.Add(new TextBlock{Text="108키 · 화면의 키를 클릭하거나 실제 키보드로 선택",FontSize=12,Foreground=Brushes.SlateGray,Margin=new Thickness(0,3,0,0)});
+        var options=new StackPanel();Grid.SetColumn(options,1);area.Children.Add(options);
+        var repeatRow=new WrapPanel();options.Children.Add(repeatRow);
+        repeats=Number(repeatRow,"반복 (회)",original==null?"1":original.EffectiveRepeats.ToString());
+        var delayRow=new WrapPanel{Margin=new Thickness(0,6,0,0)};options.Children.Add(delayRow);
+        delay=Number(delayRow,"입력 전 대기 (초)",original==null?"0.1":(original.Delay/1000m).ToString(CultureInfo.InvariantCulture));
+        keyboardOptions=new StackPanel{Margin=new Thickness(0,6,0,0)};options.Children.Add(keyboardOptions);
+        pressMode=new ComboBox{ItemsSource=new[]{"한 번 누르기","길게 누르기"},SelectedIndex=0,MinHeight=30,Margin=new Thickness(0,0,0,4)};
+        keyboardOptions.Children.Add(pressMode);
+        var holdRow=new WrapPanel();keyboardOptions.Children.Add(holdRow);
+        hold=Number(holdRow,"누르는 시간 (초)","0.5");holdRow.Visibility=Visibility.Collapsed;
+        pressMode.SelectionChanged+=(a,e)=>holdRow.Visibility=pressMode.SelectedIndex==1?Visibility.Visible:Visibility.Collapsed;
+        mouseOptions=new StackPanel();options.Children.Add(mouseOptions);
+        wheelFields=new StackPanel{Orientation=Orientation.Horizontal};mouseOptions.Children.Add(wheelFields);
         notches=Number(wheelFields,"휠 칸 수","1");
-        twice=new CheckBox{Content="더블클릭",Margin=new Thickness(0,8,10,8)};mouseFields.Children.Add(twice);
-        var location=new WrapPanel();mouseOptions.Children.Add(location);
-        currentPointer=new CheckBox{Content="실행할 때 현재 커서 사용",IsChecked=true,Margin=new Thickness(0,8,10,8)};
-        location.Children.Add(currentPointer);
-        var pick=new Button{Content="화면에서 위치 지정 · F10",Padding=new Thickness(8,4,8,4),Focusable=false};location.Children.Add(pick);
-        pick.Click+=(a,e)=>pickPoint(this,(point,window)=>{position=point;hasPosition=true;currentPointer.IsChecked=false;RefreshSelection();});
+        twice=new CheckBox{Content="더블클릭",Margin=new Thickness(0,5,0,5)};mouseOptions.Children.Add(twice);
+        currentPointer=new CheckBox{Content="현재 커서 위치 사용",IsChecked=true,Margin=new Thickness(0,5,0,5)};mouseOptions.Children.Add(currentPointer);
+        var pick=new Button{Content="화면에서 위치 지정 · F10",Padding=new Thickness(6,4,6,4),MinHeight=30,Focusable=false};mouseOptions.Children.Add(pick);
+        pick.Click+=(a,e)=>pickPoint(owner,(point,window)=>{position=point;hasPosition=true;currentPointer.IsChecked=false;RefreshSelection();});
         currentPointer.Checked+=(a,e)=>RefreshSelection();currentPointer.Unchecked+=(a,e)=>RefreshSelection();
-        var footer=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,14,0,0)};
-        body.Children.Add(footer);
-        var cancel=new Button{Content="취소",Margin=new Thickness(0,0,8,0),Padding=new Thickness(14,6,14,6)};
-        cancel.Click+=(a,e)=>Close();footer.Children.Add(cancel);
-        var apply=new Button{Content=original==null?"동작 추가":"선택 적용",Background=Teal,Foreground=Brushes.White,Padding=new Thickness(14,6,14,6)};
-        apply.Click+=(a,e)=>Commit();footer.Children.Add(apply);
+        var commit=new Button{Content=editing?"입력 변경 적용":"목록에 추가",Background=Teal,Foreground=Brushes.White,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,10,0,0)};
+        options.Children.Add(commit);commit.Click+=(a,e)=>Commit();
         if(original!=null) {
             if(original.Kind=="KeyTap") {
                 key=original.Code;extended=original.Extended;modifiers.AddRange(original.Modifiers??new int[0]);
-                hold.Text=(original.HoldMs/1000m).ToString(CultureInfo.InvariantCulture);
+                if(original.HoldMs>0){pressMode.SelectedIndex=1;hold.Text=(original.HoldMs/1000m).ToString(CultureInfo.InvariantCulture);}
             } else {
                 mouseCode=original.Kind=="Wheel"?0:original.Code;
                 wheelDirection=original.Kind=="Wheel"?Math.Sign(original.Code):0;
@@ -143,27 +153,36 @@ internal sealed class InputPicker : Window {
                 hasPosition=!original.CurrentPointer;currentPointer.IsChecked=original.CurrentPointer;
             }
         }
-        var source=new WindowInteropHelperForPicker(this);
+        keySource=new WindowInteropHelperForPicker(owner);
         PreviewKeyDown+=(a,e)=>{
-            if(e.OriginalSource is TextBox)return;
+            if(e.OriginalSource is TextBox || e.OriginalSource is ComboBox)return;
+            // Tab keeps normal keyboard navigation; it can still be selected on screen.
+            if(e.Key==Key.Tab)return;
             var pressed=e.Key==Key.System?e.SystemKey:e.Key==Key.ImeProcessed?e.ImeProcessedKey:e.Key;
             int code=KeyInterop.VirtualKeyFromKey(pressed);
             if(code<=0 || code>254)return;
-            e.Handled=true;
-            if(e.IsRepeat)return;
+            e.Handled=true;if(e.IsRepeat)return;
             var physical=new List<int>();
             foreach(var vk in new[]{162,163,164,165,160,161,91,92})
                 if(vk!=code && Native.GetAsyncKeyState(vk)<0)physical.Add(vk);
-            SelectKey(code,Extended(code)||code==13&&source.ExtendedEnter,physical);
+            SelectKey(code,Extended(code)||code==13&&keySource.ExtendedEnter,physical);
         };
         RefreshSelection();
+        Loaded+=(a,e)=>Focus();
+    }
+    internal void Detach() {if(keySource!=null)keySource.Detach();}
+    internal void CheckPick(int code,int count,int wait) {
+        SelectKey(code,Extended(code),null);repeats.Text=count.ToString();delay.Text=(wait/1000m).ToString(CultureInfo.InvariantCulture);Commit();
     }
     // WPF exposes both Enter keys as the same Key. The native message carries the keypad flag.
     sealed class WindowInteropHelperForPicker {
         internal bool ExtendedEnter {get;private set;}
+        System.Windows.Interop.HwndSource source;
         internal WindowInteropHelperForPicker(Window owner) {
-            owner.SourceInitialized+=(s,e)=>System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(owner).Handle).AddHook(Message);
+            var handle=new System.Windows.Interop.WindowInteropHelper(owner).Handle;
+            if(handle!=IntPtr.Zero){source=System.Windows.Interop.HwndSource.FromHwnd(handle);source.AddHook(Message);}
         }
+        internal void Detach(){if(source!=null){source.RemoveHook(Message);source=null;}}
         IntPtr Message(IntPtr h,int msg,IntPtr w,IntPtr l,ref bool handled) {
             if((msg==0x100||msg==0x104)&&w.ToInt64()==13)ExtendedEnter=(l.ToInt64()&0x1000000)!=0;
             return IntPtr.Zero;
@@ -171,14 +190,15 @@ internal sealed class InputPicker : Window {
     }
     static TextBox Number(Panel row,string label,string initial) {
         row.Children.Add(new TextBlock{Text=label,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0)});
-        var b=new TextBox{Text=initial,Width=76,Padding=new Thickness(4),Margin=new Thickness(0,0,10,0)};
+        var b=new TextBox{Text=initial,Width=65,MinHeight=30,Padding=new Thickness(4),Margin=new Thickness(0,0,10,0)};
+        System.Windows.Automation.AutomationProperties.SetName(b,label);
         row.Children.Add(b);return b;
     }
     void MouseChoice(Panel row,string label,int code,int direction) {
-        var b=new Button{Content=label,Padding=new Thickness(10,5,10,5),Margin=new Thickness(0,0,6,5),Focusable=false};
+        var b=new Button{Content=label,FontSize=12,MinHeight=30,Padding=new Thickness(8,4,8,4),Margin=new Thickness(0,0,6,5),Focusable=false};
         row.Children.Add(b);mouseButtons.Add(b,label);
         b.Tag=Tuple.Create(code,direction);
-        b.Click+=(a,e)=>{mouseCode=code;wheelDirection=direction;key=0;modifiers.Clear();RefreshSelection();};
+        b.Click+=(a,e)=>{Focus();mouseCode=code;wheelDirection=direction;key=0;modifiers.Clear();RefreshSelection();};
     }
     void SelectKey(int code,bool ext,List<int> physical) {
         mouseCode=0;wheelDirection=0;
@@ -225,15 +245,22 @@ internal sealed class InputPicker : Window {
             } else {
                 int main=key==0&&modifiers.Count>0?modifiers.Last():key;
                 if(main==0)throw new InvalidOperationException("입력할 키를 선택하세요.");
-                decimal seconds;
-                if((!Decimal.TryParse(hold.Text,NumberStyles.AllowDecimalPoint,CultureInfo.CurrentCulture,out seconds)&&
-                    !Decimal.TryParse(hold.Text,NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out seconds))||seconds<0||seconds>86400)
+                decimal seconds=0;
+                if(pressMode.SelectedIndex==1 && ((!Decimal.TryParse(hold.Text,NumberStyles.AllowDecimalPoint,CultureInfo.CurrentCulture,out seconds)&&
+                    !Decimal.TryParse(hold.Text,NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out seconds))||seconds<=0||seconds>86400))
                     throw new InvalidOperationException("누르는 시간을 0~86400초 사이로 입력하세요.");
                 Result=new Step{Kind="KeyTap",Code=main,Extended=main==key?extended:Extended(main),
                     Modifiers=modifiers.Where(c=>c!=main).ToArray(),HoldMs=(int)Math.Round(seconds*1000,MidpointRounding.AwayFromZero)};
             }
-            DialogResult=true;
-        } catch(InvalidOperationException e) {summary.Text=e.Message;}
+            int count;decimal wait;
+            if(!int.TryParse(repeats.Text,out count)||count<1||count>100000)throw new InvalidOperationException("반복 횟수를 1~100000 사이로 입력하세요.");
+            if(!decimal.TryParse(delay.Text,NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out wait)||wait<0||wait>86400)
+                throw new InvalidOperationException("대기 시간을 0~86400초 사이로 입력하세요.");
+            Result.RepeatCount=count;Result.Delay=(int)Math.Round(wait*1000);
+            if(originalStep!=null){Result.Skip=originalStep.Skip;Result.Then=originalStep.Then;Result.Else=originalStep.Else;}
+            apply(Result);
+            if(editing)dismiss();else {summary.Text="추가됨 · "+new Row{Step=Result}.Summary+" · "+count+"회";Focus();}
+        } catch(Exception e) {summary.Text=e.Message;}
     }
 }
 }
