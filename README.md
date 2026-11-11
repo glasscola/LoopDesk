@@ -35,3 +35,7 @@ Windows 10·11 64비트용 마우스·키보드 매크로입니다.
 Windows PowerShell에서 `./src/Build.ps1`로 빌드합니다. 별도의 외부 실행 라이브러리는 필요하지 않습니다. 설치 프로그램은 Inno Setup 6.7 이상에서 `installer/LoopDesk.iss`를 빌드합니다.
 
 실행 파일의 `--check 결과경로`, `--ui-check 결과경로`, `--tray-check 결과경로`로 각각 엔진·저장, 편집 흐름, 전역 단축키·녹화 창 복원 검사를 실행할 수 있습니다. 검사 모드는 개인 매크로를 저장하지 않습니다.
+
+## 임시 디렉터리 실행 오류가 날 때
+
+[ZIP 설치본](https://github.com/glasscola/LoopDesk/releases/download/v1.1.0/LoopDesk-Install-1.1.0.zip)을 받아 **모두 압축 해제**한 뒤 `LoopDesk-Install-1.1.0.exe`를 실행하세요. 함께 있는 `.bin` 파일 두 개도 같은 폴더에 있어야 합니다. 이 설치본은 Inno Setup의 `UseSetupLdr=no`로 빌드해 설치 실행 파일을 임시 폴더에서 시작하는 단계를 사용하지 않습니다. 앱 기능은 v1.1.0과 같습니다.
