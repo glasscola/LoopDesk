@@ -1,8 +1,8 @@
-# LoopDesk 1.1.0
+# LoopDesk v2
 
 Windows 10·11 64비트용 마우스·키보드 매크로입니다.
 
-[설치 프로그램 다운로드](https://github.com/glasscola/LoopDesk/releases/download/v1.1.0/LoopDesk-Setup-1.1.0.exe) · [포터블 실행 파일](https://github.com/glasscola/LoopDesk/releases/download/v1.1.0/LoopDesk.exe) · [PDF 설명서](docs/LoopDesk-사용설명서.pdf)
+[v2 ZIP 설치본](https://github.com/glasscola/LoopDesk/releases/download/v2/LoopDesk-Install-v2.zip) · [v2 포터블](https://github.com/glasscola/LoopDesk/releases/download/v2/LoopDesk-v2.exe) · [v1.1 사용 설명서](docs/LoopDesk-사용설명서.pdf)
 
 ## 쉽게 시작하기
 
@@ -15,6 +15,11 @@ Windows 10·11 64비트용 마우스·키보드 매크로입니다.
 ![메인 화면](docs/images/editor.png)
 
 ![목록을 가리지 않는 하단 키보드](docs/images/keyboard.png)
+
+## v2 업데이트
+
+- 하단 입력판에 실제 마우스 형태의 컨트롤을 추가했습니다. 좌우 버튼과 가운데 휠을 눌러 클릭을 추가하고, 화살표로 스크롤 방향을 선택합니다.
+- [v2 검증 결과](docs/v2-verification.md)
 
 ## 1.1 업데이트
 
@@ -32,10 +37,10 @@ Windows 10·11 64비트용 마우스·키보드 매크로입니다.
 
 ## 빌드와 검증
 
-Windows PowerShell에서 `./src/Build.ps1`로 빌드합니다. 별도의 외부 실행 라이브러리는 필요하지 않습니다. 설치 프로그램은 Inno Setup 6.7 이상에서 `installer/LoopDesk.iss`를 빌드합니다.
+Windows PowerShell에서 `./src/Build.ps1`로 빌드합니다. 별도의 외부 실행 라이브러리는 필요하지 않습니다. 설치 프로그램은 Inno Setup 6.7 이상에서 `installer/LoopDesk.iss`를 `/DDirectSetup` 옵션과 함께 빌드합니다.
 
 실행 파일의 `--check 결과경로`, `--ui-check 결과경로`, `--tray-check 결과경로`로 각각 엔진·저장, 편집 흐름, 전역 단축키·녹화 창 복원 검사를 실행할 수 있습니다. 검사 모드는 개인 매크로를 저장하지 않습니다.
 
 ## 임시 디렉터리 실행 오류가 날 때
 
-[ZIP 설치본](https://github.com/glasscola/LoopDesk/releases/download/v1.1.0/LoopDesk-Install-1.1.0.zip)을 받아 **모두 압축 해제**한 뒤 `LoopDesk-Install-1.1.0.exe`를 실행하세요. 함께 있는 `.bin` 파일 두 개도 같은 폴더에 있어야 합니다. 이 설치본은 Inno Setup의 `UseSetupLdr=no`로 빌드해 설치 실행 파일을 임시 폴더에서 시작하는 단계를 사용하지 않습니다. 앱 기능은 v1.1.0과 같습니다.
+[ZIP 설치본](https://github.com/glasscola/LoopDesk/releases/download/v2/LoopDesk-Install-v2.zip)을 받아 **모두 압축 해제**한 뒤 `LoopDesk-Install-v2.exe`를 실행하세요. 함께 있는 `.bin` 파일 두 개도 같은 폴더에 있어야 합니다. 이 설치본은 Inno Setup의 `UseSetupLdr=no`로 빌드해 설치 실행 파일을 임시 폴더에서 시작하는 단계를 사용하지 않습니다.

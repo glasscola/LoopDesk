@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -33,6 +35,8 @@ internal static class SelfCheck {
         Storage.Write(json,profile);
         restored=Storage.Read<Profile>(json);
         Storage.Validate(restored.Macros[0]);
+        if(Storage.Read<Profile>(json+".bak").Macros[0].Steps.Count!=1)
+            throw new Exception("The backup did not keep the previous saved revision.");
         if(restored.Macros[0].Steps[1].Detail!="Ctrl+C · 0.1초" || restored.Macros[0].Steps[1].EffectiveRepeats!=10 ||
             restored.Macros[0].Steps[2].EffectiveRepeats!=1 || !restored.Macros[0].Steps[2].CurrentPointer)
             throw new Exception("Manual input rows did not round trip.");
@@ -85,22 +89,27 @@ internal static class SelfCheck {
             try {vision=Vision.HasTextBitmap(sample,"LOOP DESK",CancellationToken.None)?"PASS: Windows OCR.":"OCR call completed; test phrase not detected.";}
             catch(Exception e){vision="OCR could not be verified: "+e.Message;}
         }
-        File.WriteAllText(path,"PASS: profile and shortcut persistence, random delay math, pause/resume, wait cancellation, CSV and image matching.\r\n"+vision);
+        File.WriteAllText(path,"PASS: profile, shortcuts and previous-revision backup, random delay math, pause/resume, wait cancellation, CSV and image matching.\r\n"+vision);
     }
     internal static void Desktop(string path) {
         var text=new TextBox{FontSize=22,Name="FixtureInput",Margin=new Thickness(24)};
         System.Windows.Automation.AutomationProperties.SetAutomationId(text,"FixtureInput");
-        var w=new Window{Title="LoopDesk · 입력 테스트",Content=text,Width=480,Height=175,Topmost=true,WindowStartupLocation=WindowStartupLocation.CenterScreen};
+        var board=new Grid{Background=System.Windows.Media.Brushes.Transparent};
+        text.VerticalAlignment=VerticalAlignment.Top;
+        board.Children.Add(text);
+        var w=new Window{Title="LoopDesk · 입력 테스트",Content=board,Width=480,Height=245,Topmost=true,WindowStartupLocation=WindowStartupLocation.CenterScreen};
+        var results=new List<string>();
         var app=new Application();
         w.ContentRendered+=async delegate {
             try {
                 w.Activate();text.Focus();
                 var h=new WindowInteropHelper(w).Handle;
-                await Task.Delay(150);
+                for(int attempt=0;attempt<200&&Native.GetForegroundWindow()!=h;attempt++)await Task.Delay(150);
+                System.Windows.Input.Keyboard.Focus(text);
                 bool registered=Native.RegisterHotKey(h,91,2|1|4|0x4000,121);
                 int keyError=registered?0:System.Runtime.InteropServices.Marshal.GetLastWin32Error();
                 if(registered)Native.UnregisterHotKey(h,91);
-                var m=new Macro();
+                var m=new Macro{WindowCoords=true};
                 using(var recorder=new Recorder(m,h,IntPtr.Zero,k=>false)) {
                     if(Native.GetForegroundWindow()!=h) {
                         File.WriteAllText(path,"PASS: native hook installation.\r\nHotkey registration: "+(registered?"PASS":"Win32 error "+keyError)+
@@ -108,8 +117,8 @@ internal static class SelfCheck {
                         return;
                     }
                     if(!registered)throw new System.ComponentModel.Win32Exception(keyError);
-                    Native.Char('한');Native.Char('글');await Task.Delay(200);
-                    if(text.Text!="한글")throw new Exception("SendInput text did not reach the test field.");
+                    Native.Char('한');Native.Char('글');await Task.Delay(350);
+                    results.Add((text.Text=="한글"?"PASS":"FAIL")+" 03: Korean Unicode input into Windows TextBox.");
                     if(recorder.Finish(false).Count!=0)throw new Exception("Injected input leaked into recording.");
                 }
                 text.Text="";
@@ -118,8 +127,73 @@ internal static class SelfCheck {
                 using(var gate=new ManualResetEventSlim(true))
                     await Task.Run(()=>new Player(new List<Macro>{m},c.Token,gate,delegate{}).Run(m,-1,-1));
                 if(text.Text!="요소 입력")throw new Exception("UI automation did not update the test field.");
-                File.WriteAllText(path,"PASS: global hotkey registration, native hooks, Korean SendInput, injected-event filtering, UI element text.");
-            } catch(Exception e) {File.WriteAllText(path+".error",e.ToString());Environment.ExitCode=1;}
+                results.Add("PASS: hotkey registration, native hooks, injected-event filtering and UI element text.");
+                Func<Step[],Task> play=async steps=>{
+                    if(Native.GetForegroundWindow()!=h)throw new InvalidOperationException("The test window lost focus.");
+                    m.Steps=new List<Step>(steps);
+                    using(var token=new CancellationTokenSource(12000))
+                    using(var gate=new ManualResetEventSlim(true))
+                        await Task.Run(()=>new Player(new List<Macro>{m},token.Token,gate,delegate{}).Run(m,-1,-1));
+                    await Task.Delay(60);
+                };
+                Action<string> expectText=value=>{
+                    if(text.Text!=value)throw new InvalidOperationException("Expected '"+value+"' but received '"+text.Text+"'.");
+                };
+                text.Text="";text.Focus();
+                await play(new[]{new Step{Kind="KeyTap",Code=81,RepeatCount=10,Delay=100}});
+                expectText("qqqqqqqqqq");results.Add("PASS 01: Windows TextBox received exactly 10 Q taps.");
+                text.Text="";
+                m.Repeats=2;
+                await play(new[]{new Step{Kind="Group",RepeatCount=3,Children=new List<Step>{
+                    new Step{Kind="KeyTap",Code=81,RepeatCount=2},new Step{Kind="KeyTap",Code=69}}}});
+                expectText(string.Concat(Enumerable.Repeat("qqe",6)));m.Repeats=1;
+                results.Add("PASS 07: single, grouped and whole-macro repeats reached the TextBox in the right order.");
+                var events=new List<Tuple<int,long,long>>();
+                var watch=Stopwatch.StartNew();
+                HwndSource.FromHwnd(h).AddHook((IntPtr window,int message,IntPtr word,IntPtr data,ref bool handled)=>{
+                    if((message>=0x100&&message<=0x101)||(message>=0x201&&message<=0x20a))
+                        events.Add(Tuple.Create(message,message==0x20a?word.ToInt64():data.ToInt64(),watch.ElapsedMilliseconds));
+                    return IntPtr.Zero;
+                });
+                await play(new[]{new Step{Kind="KeyTap",Code=13},new Step{Kind="KeyTap",Code=13,Extended=true},
+                    new Step{Kind="KeyTap",Code=65,HoldMs=500}});
+                var downs=events.Where(e=>e.Item1==0x100).ToArray();var ups=events.Where(e=>e.Item1==0x101).ToArray();
+                if(downs.Length<3||ups.Length!=3||(downs[0].Item2&0x1000000)!=0||(downs[1].Item2&0x1000000)==0||
+                    ups[2].Item3-downs[2].Item3<480)throw new InvalidOperationException("Enter or hold timing differed.");
+                results.Add("PASS 04: Enter and numpad Enter differed, and a 500 ms hold released once.");
+                events.Clear();
+                await play(new[]{
+                    new Step{Kind="MouseTap",Code=1,X=100,Y=115},new Step{Kind="MouseTap",Code=2,X=100,Y=115},
+                    new Step{Kind="MouseTap",Code=3,X=100,Y=115},new Step{Kind="Wheel",Code=120,X=100,Y=115},
+                    new Step{Kind="Wheel",Code=-120,X=100,Y=115},new Step{Kind="Down",Code=1,X=100,Y=130},
+                    new Step{Kind="Move",X=150,Y=140},new Step{Kind="Up",Code=1,X=150,Y=140}});
+                var expected=new[]{0x201,0x202,0x204,0x205,0x207,0x208,0x20a,0x20a,0x201,0x202};
+                var mouse=events.Where(e=>e.Item1>=0x201).ToArray();
+                if(!mouse.Select(e=>e.Item1).SequenceEqual(expected)||(short)(mouse[6].Item2>>16)!=120||
+                    (short)(mouse[7].Item2>>16)!=-120||(short)mouse[9].Item2!=150)
+                    throw new InvalidOperationException("Mouse buttons, wheel directions or drag endpoint differed.");
+                results.Add("PASS 05: left, right, middle, both wheel directions and drag endpoint.");
+                var oldBounds=Native.Client(h);
+                w.Left+=30;await Task.Delay(80);
+                var newBounds=Native.Client(h);
+                await play(new[]{new Step{Kind="MouseTap",Code=1,X=100,Y=115}});
+                Native.Point cursor;
+                if(oldBounds.X==newBounds.X||!Native.GetCursorPos(out cursor)||cursor.X!=newBounds.X+100||cursor.Y!=newBounds.Y+115)
+                    throw new InvalidOperationException("Window-relative click did not follow the moved window.");
+                results.Add("PASS 06 (single display): client-relative click followed a moved window.");
+                var points=new List<long>();
+                var timer=Stopwatch.StartNew();
+                using(var gate=new ManualResetEventSlim(true)) {
+                    m.Steps=new List<Step>{new Step{Kind="Wait",Delay=100,RepeatCount=30}};
+                    await Task.Run(()=>new Player(new List<Macro>{m},CancellationToken.None,gate,(i,r,n)=>points.Add(timer.ElapsedMilliseconds),
+                        randomSwitch:()=>true,range:new[]{40,40}).Run(m,-1,-1));
+                }
+                var intervals=points.Zip(points.Skip(1),(a,b)=>b-a).ToArray();
+                if(!intervals.Any(ms=>ms>=50&&ms<100)||!intervals.Any(ms=>ms>=125&&ms<210))
+                    throw new InvalidOperationException("Expected both randomized delay bands.");
+                results.Add("PASS 08: randomized waits included both bands; measured "+intervals.Min()+"–"+intervals.Max()+" ms.");
+                File.WriteAllLines(path,results);
+            } catch(Exception e) {File.WriteAllLines(path,results);File.WriteAllText(path+".error",e.ToString());Environment.ExitCode=1;}
             finally {w.Close();}
         };
         app.Run(w);

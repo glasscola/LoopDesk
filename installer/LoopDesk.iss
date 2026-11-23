@@ -7,7 +7,7 @@
 [Setup]
 AppId={{D7F5141A-5F53-4F24-B423-938B07F92AB0}
 AppName=LoopDesk
-AppVersion=1.1.0
+AppVersion=2.0.0
 AppPublisher=glasscola
 AppPublisherURL=https://github.com/glasscola/LoopDesk
 AppSupportURL=https://github.com/glasscola/LoopDesk/issues
@@ -21,9 +21,9 @@ MinVersion=10.0
 OutputDir=..\outputs
 #ifdef DirectSetup
 UseSetupLdr=no
-OutputBaseFilename=LoopDesk-Install-1.1.0
+OutputBaseFilename=LoopDesk-Install-v2
 #else
-OutputBaseFilename=LoopDesk-Setup-1.1.0
+OutputBaseFilename=LoopDesk-Setup-v2
 #endif
 Compression=lzma2
 SolidCompression=yes

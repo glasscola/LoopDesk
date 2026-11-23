@@ -34,6 +34,14 @@ internal sealed partial class Desk {
         inputPicker.CheckPick(65,10,100);
         Require(current.Steps.Any(s=>s.Kind=="KeyTap"&&s.Code==65&&s.RepeatCount==10),"Picker did not add repeated input.");
         Require(F<Border>("InputDock").Visibility==Visibility.Visible,"Adding input must leave the dock open for more inputs.");
+        var mouseActions=new[]{"왼쪽 클릭","오른쪽 클릭","휠 클릭","휠 위로","휠 아래로"};
+        var mouseCodes=new[]{1,2,3,120,-120};
+        for(int i=0;i<mouseActions.Length;i++) {
+            inputPicker.CheckMouse(mouseActions[i]);
+            var added=current.Steps[grid.SelectedIndex];
+            Require(added.Kind==(i<3?"MouseTap":"Wheel")&&added.Code==mouseCodes[i]&&added.CurrentPointer,
+                "The mouse control added the wrong input: "+mouseActions[i]);
+        }
         CloseInput();Require(!capturing&&F<Border>("InputDock").Visibility==Visibility.Collapsed,"Closing input did not resume shortcut mode.");
         current.Steps=new List<Step>{new Step{Kind="Pixel",Code=0,Timeout=5000},new Step{Kind="Wait"}};Refresh(0);
         var timeout=Inputs(Panel("Editor")).OfType<TextBox>().Single(b=>AutomationProperties.GetName(b)=="최대 대기 시간 (초)");
@@ -50,7 +58,15 @@ internal sealed partial class Desk {
             new Player(new List<Macro>{group},CancellationToken.None,gate,(step,cycle,name)=>visits.Add(name+":"+step)).Run(group,-1,-1);
             Require(visits.Count==10&&visits.Count(v=>v.Contains("/ 묶음"))==6,"Grouped actions did not execute in order on each repeat.");
         }
-        File.WriteAllText(path,"PASS: editing persistence, invalid edit protection, undo/redo, grouped repeats and deep copy, docked 108-key input, advanced seconds, and recording simplification.");
+        current.Schedule="+5";
+        current.Process="LoopDesk.ScheduleFixture.NotRunning";
+        scheduled[current.Id]=DateTime.Now.AddMinutes(-1);
+        Tick();
+        Require(!Busy&&scheduled[current.Id]>DateTime.Now&&logs.Any(line=>line.Contains("예약 건너뜀")),
+            "A scheduled macro without its target window was not skipped.");
+        profile.CommonKeys[0]=profile.Emergency;
+        Require(Register().Contains("겹칩니다"),"Duplicate shortcuts were not detected.");
+        File.WriteAllText(path,"PASS: editor persistence, invalid edit protection, undo/redo, grouped repeats, 108-key dock, all five mouse controls, recording conversion, reservation skip, and shortcut conflict detection.");
     }
     internal void PreviewUI() {
         current.Name="Q 입력 반복 예제";

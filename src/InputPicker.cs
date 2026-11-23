@@ -35,6 +35,7 @@ internal sealed class InputPicker : UserControl {
     readonly Action<Window,Action<Native.Point,IntPtr>> pickPoint;
     readonly StackPanel keyboardOptions,mouseOptions;
     readonly Dictionary<Button,string> mouseButtons=new Dictionary<Button,string>();
+    static readonly Brush MouseOutline=new SolidColorBrush(Color.FromRgb(101,117,138));
     int key,mouseCode,wheelDirection;
     bool extended,hasPosition;
     Native.Point position;
@@ -116,9 +117,11 @@ internal sealed class InputPicker : UserControl {
             Canvas.SetLeft(b,cap.X*43);Canvas.SetTop(b,cap.Y*43);canvas.Children.Add(b);buttons.Add(b,cap);
             b.Click+=(a,e)=>{Focus();SelectKey(cap.Code,cap.Extended,null);};
         }
-        var mouse=new WrapPanel{Margin=new Thickness(0,7,0,0)};left.Children.Add(mouse);
-        MouseChoice(mouse,"왼쪽 클릭",1,0);MouseChoice(mouse,"휠 클릭",3,0);MouseChoice(mouse,"오른쪽 클릭",2,0);
-        MouseChoice(mouse,"휠 ↑",0,1);MouseChoice(mouse,"휠 ↓",0,-1);
+        var keyboardView=left.Children[0] as Viewbox;
+        left.Children.Remove(keyboardView);
+        var devices=new DockPanel();left.Children.Add(devices);
+        var mouse=CreateMouse();DockPanel.SetDock(mouse,Dock.Right);devices.Children.Add(mouse);
+        devices.Children.Add(keyboardView);
         left.Children.Add(new TextBlock{Text="108키 · 화면의 키를 클릭하거나 실제 키보드로 선택",FontSize=12,Foreground=Brushes.SlateGray,Margin=new Thickness(0,3,0,0)});
         var options=new StackPanel();Grid.SetColumn(options,1);area.Children.Add(options);
         var repeatRow=new WrapPanel();options.Children.Add(repeatRow);
@@ -156,6 +159,8 @@ internal sealed class InputPicker : UserControl {
         keySource=new WindowInteropHelperForPicker(owner);
         PreviewKeyDown+=(a,e)=>{
             if(e.OriginalSource is TextBox || e.OriginalSource is ComboBox)return;
+            var focusedButton=e.OriginalSource as Button;
+            if(focusedButton!=null&&mouseButtons.ContainsKey(focusedButton)&&(e.Key==Key.Enter||e.Key==Key.Space))return;
             // Tab keeps normal keyboard navigation; it can still be selected on screen.
             if(e.Key==Key.Tab)return;
             var pressed=e.Key==Key.System?e.SystemKey:e.Key==Key.ImeProcessed?e.ImeProcessedKey:e.Key;
@@ -173,6 +178,10 @@ internal sealed class InputPicker : UserControl {
     internal void Detach() {if(keySource!=null)keySource.Detach();}
     internal void CheckPick(int code,int count,int wait) {
         SelectKey(code,Extended(code),null);repeats.Text=count.ToString();delay.Text=(wait/1000m).ToString(CultureInfo.InvariantCulture);Commit();
+    }
+    internal void CheckMouse(string label) {
+        mouseButtons.Single(pair=>pair.Value==label).Key.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Commit();
     }
     // WPF exposes both Enter keys as the same Key. The native message carries the keypad flag.
     sealed class WindowInteropHelperForPicker {
@@ -194,9 +203,38 @@ internal sealed class InputPicker : UserControl {
         System.Windows.Automation.AutomationProperties.SetName(b,label);
         row.Children.Add(b);return b;
     }
-    void MouseChoice(Panel row,string label,int code,int direction) {
-        var b=new Button{Content=label,FontSize=12,MinHeight=30,Padding=new Thickness(8,4,8,4),Margin=new Thickness(0,0,6,5),Focusable=false};
-        row.Children.Add(b);mouseButtons.Add(b,label);
+    FrameworkElement CreateMouse() {
+        var panel=new StackPanel{Width=144,Margin=new Thickness(12,0,0,0),VerticalAlignment=VerticalAlignment.Center};
+        panel.Children.Add(new TextBlock{Text="마우스",FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,0,0,5)});
+        var body=new Canvas{Width=136,Height=140,HorizontalAlignment=HorizontalAlignment.Left};
+        panel.Children.Add(body);
+        body.Children.Add(new System.Windows.Shapes.Path{
+            Data=Geometry.Parse("M 44,3 C 20,3 5,20 5,45 L 5,92 C 5,121 21,137 44,137 C 67,137 83,121 83,92 L 83,45 C 83,20 68,3 44,3 Z"),
+            Fill=new SolidColorBrush(Color.FromRgb(220,231,240)),Stroke=Ink,StrokeThickness=1.5
+        });
+        MouseChoice(body,"왼쪽 클릭",1,0,8,6,35,54,"M 35,0 C 12,0 0,17 0,38 L 0,54 L 35,54 Z");
+        MouseChoice(body,"오른쪽 클릭",2,0,45,6,35,54,"M 0,0 C 23,0 35,17 35,38 L 35,54 L 0,54 Z");
+        MouseChoice(body,"휠 클릭",3,0,35,19,18,29,"M 9,1 C 4,1 1,4 1,9 L 1,20 C 1,25 4,28 9,28 C 14,28 17,25 17,20 L 17,9 C 17,4 14,1 9,1 Z M 5,10 L 13,10 M 5,15 L 13,15 M 5,20 L 13,20");
+        MouseChoice(body,"휠 위로",0,1,93,20,40,32,null,"↑");
+        MouseChoice(body,"휠 아래로",0,-1,93,58,40,32,null,"↓");
+        panel.Children.Add(new TextBlock{Text="버튼 또는 휠 선택",FontSize=11,Foreground=Brushes.SlateGray});
+        return panel;
+    }
+    void MouseChoice(Canvas panel,string label,int code,int direction,double x,double y,double width,double height,string shape,string glyph=null) {
+        var b=new Button{Content=glyph,Width=width,Height=height,FontSize=16,MinHeight=0,Padding=new Thickness(0),Margin=new Thickness(0),ToolTip=label};
+        System.Windows.Automation.AutomationProperties.SetName(b,label);
+        if(shape!=null) {
+            var path=new FrameworkElementFactory(typeof(System.Windows.Shapes.Path));
+            path.SetValue(System.Windows.Shapes.Path.DataProperty,Geometry.Parse(shape));
+            path.SetBinding(System.Windows.Shapes.Path.FillProperty,new System.Windows.Data.Binding("Background"){RelativeSource=System.Windows.Data.RelativeSource.TemplatedParent});
+            path.SetBinding(System.Windows.Shapes.Path.StrokeProperty,new System.Windows.Data.Binding("BorderBrush"){RelativeSource=System.Windows.Data.RelativeSource.TemplatedParent});
+            path.SetValue(System.Windows.Shapes.Path.StrokeThicknessProperty,1d);
+            var template=new ControlTemplate(typeof(Button)){VisualTree=path};
+            var hover=new Trigger{Property=IsMouseOverProperty,Value=true};
+            hover.Setters.Add(new Setter(BorderBrushProperty,Teal));template.Triggers.Add(hover);
+            b.Template=template;
+        }
+        Canvas.SetLeft(b,x);Canvas.SetTop(b,y);panel.Children.Add(b);mouseButtons.Add(b,label);
         b.Tag=Tuple.Create(code,direction);
         b.Click+=(a,e)=>{Focus();mouseCode=code;wheelDirection=direction;key=0;modifiers.Clear();RefreshSelection();};
     }
@@ -226,6 +264,7 @@ internal sealed class InputPicker : UserControl {
             var value=(Tuple<int,int>)pair.Key.Tag;
             bool selected=mouse&&value.Item1==mouseCode&&value.Item2==wheelDirection;
             pair.Key.Background=selected?Teal:Brushes.White;pair.Key.Foreground=selected?Brushes.White:Ink;
+            pair.Key.BorderBrush=selected?Ink:MouseOutline;
             if(selected)mouseName=pair.Value;
         }
         var codes=modifiers.Select(c=>KeyName(c,false)).Concat(key==0?new string[0]:new[]{KeyName(key,extended)});
