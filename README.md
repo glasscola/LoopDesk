@@ -1,14 +1,14 @@
-# LoopDesk v2
+# LoopDesk v3
 
 Windows 10·11 64비트용 마우스·키보드 매크로입니다.
 
-**[LoopDesk v2 다운로드 · 설치 없이 실행](https://github.com/glasscola/LoopDesk/releases/download/v2/LoopDesk-v2.exe)**
+**[LoopDesk v3 다운로드 · 설치 없이 실행](https://github.com/glasscola/LoopDesk/releases/download/v3/LoopDesk-v3.exe)**
 
-`LoopDesk-v2.exe` 하나를 원하는 폴더에 저장하고 실행하세요. [v1.1 사용 설명서](docs/LoopDesk-사용설명서.pdf)
+`LoopDesk-v3.exe` 하나를 원하는 폴더에 저장하고 실행하세요. [v1.1 사용 설명서](docs/LoopDesk-사용설명서.pdf)
 
 ## 쉽게 시작하기
 
-1. 기존 LoopDesk가 대기 중이면 알림 영역에서 **완전히 종료**한 뒤 내려받은 `LoopDesk-v2.exe`를 실행합니다.
+1. 기존 LoopDesk가 대기 중이면 알림 영역에서 **완전히 종료**한 뒤 내려받은 `LoopDesk-v3.exe`를 실행합니다.
 2. **녹화:** 대상 창에서 F6으로 녹화, F7로 저장합니다. 저장 후 편집 창이 돌아옵니다.
 3. **직접 입력:** `+ 키·마우스 입력`을 누르면 하단에 108키 키보드가 펼쳐집니다. 키·마우스를 선택하고 반복 횟수와 입력 전 대기를 정한 뒤 `목록에 추가`를 누릅니다.
 4. **수정:** 목록에서 동작을 선택해 오른쪽에서 수정합니다. 기본 동작과 전체 반복 설정은 자동 저장됩니다. 잘못된 입력은 이동 전에 수정해야 합니다. 고급 동작에는 변경 저장 버튼도 있습니다.
@@ -17,6 +17,14 @@ Windows 10·11 64비트용 마우스·키보드 매크로입니다.
 ![메인 화면](docs/images/editor.png)
 
 ![목록을 가리지 않는 하단 키보드](docs/images/keyboard.png)
+
+## v3 업데이트
+
+- 창을 540×400 논리 픽셀까지 줄일 수 있습니다. Windows 화면 배율에 따라 실제 픽셀 크기는 달라집니다.
+- 좁은 창에서는 내 매크로, 동작 목록, 동작 설정을 버튼으로 전환합니다. 동작 줄을 두 번 클릭해 바로 설정을 열 수도 있습니다.
+- 작은 창의 입력 화면에서 키보드와 마우스를 전환합니다. 키보드 영역은 스크롤할 수 있고 추가 버튼은 하단에 고정됩니다.
+
+![작은 창에서 동작 목록을 보는 화면](docs/images/compact.png)
 
 ## v2 업데이트
 

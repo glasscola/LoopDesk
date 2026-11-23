@@ -237,11 +237,13 @@ internal sealed partial class Desk {
             if(apply!=null)apply(step);else InsertStep(step);
         },CloseInput);
         F<ContentControl>("InputContent").Content=inputPicker;F<Border>("InputDock").Visibility=Visibility.Visible;
+        FitInputDock();
         Note("키를 선택하고 ‘목록에 추가’를 누르세요. 입력 선택 중에는 실행 단축키가 잠시 대기합니다.");
     }
     void CloseInput() {
         if(inputPicker==null)return;
         inputPicker.Detach();inputPicker=null;F<ContentControl>("InputContent").Content=null;F<Border>("InputDock").Visibility=Visibility.Collapsed;
+        FitInputDock();
         capturing=false;Register();Buttons();
     }
     void MenuCommand(ItemsControl menu,string title,string control) {

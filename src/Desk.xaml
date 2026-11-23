@@ -32,25 +32,29 @@
    </ControlTemplate></Setter.Value></Setter>
   </Style>
  </Grid.Resources>
- <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*" MinHeight="200"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
- <Border Background="White" BorderBrush="#DFE6EE" BorderThickness="0,0,0,1" Padding="18,10">
+ <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+ <Border x:Name="Header" Background="White" BorderBrush="#DFE6EE" BorderThickness="0,0,0,1" Padding="18,10">
   <DockPanel>
-   <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="LoopDesk" FontSize="23" FontWeight="Bold"/><TextBlock Text="  v2" Foreground="#65758A" VerticalAlignment="Center" FontSize="12"/></StackPanel>
+   <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="LoopDesk" FontSize="23" FontWeight="Bold"/><TextBlock Text="  v3" Foreground="#65758A" VerticalAlignment="Center" FontSize="12"/></StackPanel>
    <WrapPanel DockPanel.Dock="Right" HorizontalAlignment="Right">
     <TextBlock x:Name="State" Text="● 준비됨" VerticalAlignment="Center" Foreground="#176B63" Margin="10,0,18,4"/>
     <Button x:Name="Manage" Content="관리 ⋯" Margin="0,0,6,0"/><Button x:Name="Help" Content="사용법" Margin="0"/>
    </WrapPanel>
   </DockPanel>
  </Border>
- <Border Grid.Row="1" Padding="18,12,12,5">
-  <DockPanel>
-   <WrapPanel DockPanel.Dock="Right" HorizontalAlignment="Right"><Button x:Name="Play" Content="▶ 실행 · F9" Style="{StaticResource Primary}" MinWidth="125"/><Button x:Name="Pause" Content="일시정지"/><Button x:Name="Stop" Content="■ 정지" Foreground="#A42C3B"/></WrapPanel>
-   <WrapPanel><Button x:Name="Record" Content="● 녹화 · F6" Background="#FFF0F1" Foreground="#A32A3A" BorderBrush="#F0DADD"/><Button x:Name="EndRecord" Content="녹화 종료"/><Button x:Name="DirectInput" Content="+ 키·마우스 입력" Background="White" FontWeight="SemiBold"/><Button x:Name="AddStep" Content="다른 동작 ▾"/></WrapPanel>
-  </DockPanel>
+ <Border x:Name="Toolbar" Grid.Row="1" Padding="18,12,12,5">
+  <StackPanel>
+   <WrapPanel><Button x:Name="Record" Content="● 녹화 · F6" Background="#FFF0F1" Foreground="#A32A3A" BorderBrush="#F0DADD"/><Button x:Name="EndRecord" Content="녹화 종료"/><Button x:Name="Play" Content="▶ 실행 · F9" Style="{StaticResource Primary}"/><Button x:Name="Pause" Content="일시정지"/><Button x:Name="Stop" Content="■ 정지" Foreground="#A42C3B"/><Button x:Name="DirectInput" Content="+ 키·마우스 입력" Background="White" FontWeight="SemiBold"/><Button x:Name="AddStep" Content="다른 동작 ▾"/></WrapPanel>
+   <WrapPanel x:Name="CompactNav" Visibility="Collapsed" Margin="0,3,0,0">
+    <Button x:Name="CompactMacros" Content="내 매크로" MinHeight="30" Padding="10,4"/>
+    <Button x:Name="CompactSteps" Content="동작 목록" MinHeight="30" Padding="10,4"/>
+    <Button x:Name="CompactEditor" Content="동작 설정" MinHeight="30" Padding="10,4"/>
+   </WrapPanel>
+  </StackPanel>
  </Border>
  <Grid x:Name="Workspace" Grid.Row="2" Margin="14,0,14,10">
-  <Grid.ColumnDefinitions><ColumnDefinition Width="174" MinWidth="145"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*" MinWidth="300"/><ColumnDefinition Width="8"/><ColumnDefinition Width="290" MinWidth="270"/></Grid.ColumnDefinitions>
-  <Border Background="White" CornerRadius="10" Padding="12" BorderBrush="#DFE6EE" BorderThickness="1">
+  <Grid.ColumnDefinitions><ColumnDefinition Width="174"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="290"/></Grid.ColumnDefinitions>
+  <Border x:Name="MacroPane" Background="White" CornerRadius="10" Padding="12" BorderBrush="#DFE6EE" BorderThickness="1">
    <DockPanel>
     <StackPanel DockPanel.Dock="Top"><DockPanel Margin="0,0,0,10"><TextBlock Text="내 매크로" FontWeight="SemiBold" VerticalAlignment="Center"/><Button x:Name="AddMacro" Content="+" DockPanel.Dock="Right" HorizontalAlignment="Right" ToolTip="새 매크로" Padding="9,2" MinHeight="28" Margin="0"/></DockPanel><TextBox x:Name="Search" ToolTip="매크로 이름 검색" AutomationProperties.Name="매크로 이름 검색" Margin="0,0,0,8"/></StackPanel>
     <ListBox x:Name="Library" BorderThickness="0" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -59,8 +63,8 @@
     </ListBox>
    </DockPanel>
   </Border>
-  <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" Background="Transparent"/>
-  <Border Grid.Column="2" Background="White" CornerRadius="10" Padding="12" BorderBrush="#DFE6EE" BorderThickness="1">
+  <GridSplitter x:Name="MacroSplitter" Grid.Column="1" Width="4" HorizontalAlignment="Center" Background="Transparent"/>
+  <Border x:Name="StepsPane" Grid.Column="2" Background="White" CornerRadius="10" Padding="12" BorderBrush="#DFE6EE" BorderThickness="1">
    <DockPanel>
     <StackPanel DockPanel.Dock="Top">
      <DockPanel><Button x:Name="EditTools" DockPanel.Dock="Right" Content="편집 ⋯" HorizontalAlignment="Right"/><TextBlock x:Name="Title" Style="{StaticResource Heading}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center"/></DockPanel>
@@ -88,8 +92,8 @@
     </Grid>
    </DockPanel>
   </Border>
-  <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Center" Background="Transparent"/>
-  <Border Grid.Column="4" Background="White" CornerRadius="10" Padding="12" BorderBrush="#DFE6EE" BorderThickness="1">
+  <GridSplitter x:Name="EditorSplitter" Grid.Column="3" Width="4" HorizontalAlignment="Center" Background="Transparent"/>
+  <Border x:Name="EditorPane" Grid.Column="4" Background="White" CornerRadius="10" Padding="12" BorderBrush="#DFE6EE" BorderThickness="1">
    <TabControl x:Name="Tabs" SelectedIndex="1" BorderThickness="0" Background="White">
     <TabItem Header="전체 반복"><DockPanel><StackPanel x:Name="SettingsFooter" DockPanel.Dock="Bottom"/><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="Settings" Margin="0,2,6,0"/></ScrollViewer></DockPanel></TabItem>
     <TabItem Header="동작"><DockPanel><StackPanel x:Name="EditorFooter" DockPanel.Dock="Bottom"/><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="Editor" Margin="0,2,6,0"/></ScrollViewer></DockPanel></TabItem>
@@ -98,7 +102,9 @@
   </Border>
  </Grid>
  <Border x:Name="InputDock" Grid.Row="3" Visibility="Collapsed" Margin="14,0,14,10" Background="White" BorderBrush="#A9CEC5" BorderThickness="1" CornerRadius="10" Padding="12">
-  <ContentControl x:Name="InputContent"/>
+  <ScrollViewer x:Name="InputScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+   <ContentControl x:Name="InputContent"/>
+  </ScrollViewer>
  </Border>
  <Border Grid.Row="4" Background="#E8EEF3" Padding="16,7">
   <DockPanel><TextBlock x:Name="EmergencyLabel" DockPanel.Dock="Right" Text="긴급 정지 Ctrl+Alt+Esc" FontSize="12" Foreground="#426158" Margin="16,0,0,0"/><TextBlock x:Name="Message" Text="준비됨" FontSize="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/></DockPanel>

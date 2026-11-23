@@ -98,6 +98,7 @@ internal sealed class InputPicker : UserControl {
         var body=new Grid();
         body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
         body.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+        deviceRow=body.RowDefinitions[1];
         Content=body;
         var heading=new DockPanel{Margin=new Thickness(0,0,0,8)};
         var close=new Button{Content="닫기 ×",Padding=new Thickness(10,4,10,4),MinHeight=28,Margin=new Thickness(8,0,0,0)};
@@ -106,10 +107,12 @@ internal sealed class InputPicker : UserControl {
         heading.Children.Add(summary);body.Children.Add(heading);
         var area=new Grid();Grid.SetRow(area,1);body.Children.Add(area);
         area.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
-        area.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(232)});
-        var left=new StackPanel{Margin=new Thickness(0,0,16,0)};area.Children.Add(left);
+        optionColumn=new ColumnDefinition{Width=new GridLength(232)};
+        area.ColumnDefinitions.Add(optionColumn);
+        var left=new DockPanel{Margin=new Thickness(0,0,12,0)};
+        area.Children.Add(left);
         var canvas=new Canvas{Width=23.05*43,Height=6.45*43};
-        left.Children.Add(new Viewbox{Child=canvas,Stretch=Stretch.Uniform,StretchDirection=StretchDirection.DownOnly,HorizontalAlignment=HorizontalAlignment.Stretch,MaxHeight=230});
+        keyboardView=new Viewbox{Child=canvas,Stretch=Stretch.Uniform,StretchDirection=StretchDirection.DownOnly,HorizontalAlignment=HorizontalAlignment.Stretch,MaxHeight=230};
         foreach(var cap in Layout) {
             var b=new Button{Content=cap.Text,Width=cap.W*43-4,Height=cap.H*43-4,Padding=new Thickness(2),Margin=new Thickness(0),MinHeight=0,
                 FontSize=cap.Text.Length>=4?12:15,Focusable=false,Foreground=Ink,Background=Brushes.White,ToolTip=KeyName(cap.Code,cap.Extended)};
@@ -117,13 +120,27 @@ internal sealed class InputPicker : UserControl {
             Canvas.SetLeft(b,cap.X*43);Canvas.SetTop(b,cap.Y*43);canvas.Children.Add(b);buttons.Add(b,cap);
             b.Click+=(a,e)=>{Focus();SelectKey(cap.Code,cap.Extended,null);};
         }
-        var keyboardView=left.Children[0] as Viewbox;
-        left.Children.Remove(keyboardView);
+        deviceSwitch=new WrapPanel{Visibility=Visibility.Collapsed,Margin=new Thickness(0,0,0,6)};
+        DockPanel.SetDock(deviceSwitch,Dock.Top);
+        left.Children.Add(deviceSwitch);
+        var keyboardTab=new Button{Content="키보드",MinHeight=29,Padding=new Thickness(8,3,8,3)};
+        var mouseTab=new Button{Content="마우스",MinHeight=29,Padding=new Thickness(8,3,8,3)};
+        keyboardTab.Click+=(a,e)=>{ShowDevice(false);Focus();};mouseTab.Click+=(a,e)=>{ShowDevice(true);Focus();};
+        deviceSwitch.Children.Add(keyboardTab);deviceSwitch.Children.Add(mouseTab);
+        deviceHint=new TextBlock{Text="108키 · 화면의 키를 클릭하거나 실제 키보드로 선택",FontSize=12,Foreground=Brushes.SlateGray,Margin=new Thickness(0,3,0,0)};
+        DockPanel.SetDock(deviceHint,Dock.Bottom);left.Children.Add(deviceHint);
         var devices=new DockPanel();left.Children.Add(devices);
-        var mouse=CreateMouse();DockPanel.SetDock(mouse,Dock.Right);devices.Children.Add(mouse);
-        devices.Children.Add(keyboardView);
-        left.Children.Add(new TextBlock{Text="108키 · 화면의 키를 클릭하거나 실제 키보드로 선택",FontSize=12,Foreground=Brushes.SlateGray,Margin=new Thickness(0,3,0,0)});
-        var options=new StackPanel();Grid.SetColumn(options,1);area.Children.Add(options);
+        mouseView=CreateMouse();DockPanel.SetDock(mouseView,Dock.Right);devices.Children.Add(mouseView);
+        keyboardScroller=new ScrollViewer{Content=keyboardView,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled};
+        devices.Children.Add(keyboardScroller);
+        var options=new StackPanel();
+        var actions=new DockPanel();
+        Grid.SetColumn(actions,1);area.Children.Add(actions);
+        var commit=new Button{Content=editing?"입력 변경 적용":"목록에 추가",Background=Teal,Foreground=Brushes.White,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,6,0,0)};
+        DockPanel.SetDock(commit,Dock.Bottom);actions.Children.Add(commit);
+        commit.Click+=(a,e)=>Commit();
+        optionScroller=new ScrollViewer{Content=options,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
+        actions.Children.Add(optionScroller);
         var repeatRow=new WrapPanel();options.Children.Add(repeatRow);
         repeats=Number(repeatRow,"반복 (회)",original==null?"1":original.EffectiveRepeats.ToString());
         var delayRow=new WrapPanel{Margin=new Thickness(0,6,0,0)};options.Children.Add(delayRow);
@@ -142,8 +159,6 @@ internal sealed class InputPicker : UserControl {
         var pick=new Button{Content="화면에서 위치 지정 · F10",Padding=new Thickness(6,4,6,4),MinHeight=30,Focusable=false};mouseOptions.Children.Add(pick);
         pick.Click+=(a,e)=>pickPoint(owner,(point,window)=>{position=point;hasPosition=true;currentPointer.IsChecked=false;RefreshSelection();});
         currentPointer.Checked+=(a,e)=>RefreshSelection();currentPointer.Unchecked+=(a,e)=>RefreshSelection();
-        var commit=new Button{Content=editing?"입력 변경 적용":"목록에 추가",Background=Teal,Foreground=Brushes.White,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,10,0,0)};
-        options.Children.Add(commit);commit.Click+=(a,e)=>Commit();
         if(original!=null) {
             if(original.Kind=="KeyTap") {
                 key=original.Code;extended=original.Extended;modifiers.AddRange(original.Modifiers??new int[0]);
@@ -174,6 +189,34 @@ internal sealed class InputPicker : UserControl {
         };
         RefreshSelection();
         Loaded+=(a,e)=>Focus();
+    }
+    ColumnDefinition optionColumn;
+    RowDefinition deviceRow;
+    WrapPanel deviceSwitch;
+    TextBlock deviceHint;
+    Viewbox keyboardView;
+    ScrollViewer keyboardScroller;
+    ScrollViewer optionScroller;
+    FrameworkElement mouseView;
+    bool compactLayout;
+
+    internal void UseCompactLayout(bool compact) {
+        if(compactLayout==compact)return;
+        compactLayout=compact;
+        optionColumn.Width=new GridLength(compact?176:232);
+        deviceRow.Height=compact?new GridLength(1,GridUnitType.Star):GridLength.Auto;
+        optionScroller.VerticalScrollBarVisibility=compact?ScrollBarVisibility.Auto:ScrollBarVisibility.Disabled;
+        deviceSwitch.Visibility=compact?Visibility.Visible:Visibility.Collapsed;
+        deviceHint.Visibility=compact?Visibility.Collapsed:Visibility.Visible;
+        DockPanel.SetDock(mouseView,compact?Dock.Left:Dock.Right);
+        keyboardView.Width=compact?580:double.NaN;
+        keyboardScroller.HorizontalScrollBarVisibility=compact?ScrollBarVisibility.Auto:ScrollBarVisibility.Disabled;
+        keyboardScroller.VerticalScrollBarVisibility=compact?ScrollBarVisibility.Auto:ScrollBarVisibility.Disabled;
+        ShowDevice(mouseCode!=0||wheelDirection!=0);
+    }
+    void ShowDevice(bool mouse) {
+        keyboardScroller.Visibility=!compactLayout||!mouse?Visibility.Visible:Visibility.Collapsed;
+        mouseView.Visibility=!compactLayout||mouse?Visibility.Visible:Visibility.Collapsed;
     }
     internal void Detach() {if(keySource!=null)keySource.Detach();}
     internal void CheckPick(int code,int count,int wait) {

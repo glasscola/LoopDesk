@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -12,6 +13,16 @@ namespace LoopDesk {
 internal sealed partial class Desk {
     static void Require(bool condition,string message){if(!condition)throw new InvalidOperationException(message);}
     TextBox EditField(string label){return Inputs(Panel("Editor")).OfType<TextBox>().Single(b=>AutomationProperties.GetName(b)==label);}
+    internal async Task CheckActiveReservation(IntPtr target) {
+        Require(Native.GetForegroundWindow()==target,"The reservation test window is not active.");
+        current.Process=Native.App(target);
+        current.Schedule="+5";
+        current.Steps=new List<Step>{new Step{Kind="Text",Value="예약 실행"}};
+        scheduled[current.Id]=DateTime.Now.AddMinutes(-1);
+        Tick();
+        for(int i=0;i<60&&Busy;i++)await Task.Delay(50);
+        Require(!Busy&&logs.Any(line=>line.Contains("실행 완료")),"The active-window reservation did not finish.");
+    }
     internal void CheckEase(string path) {
         current.Steps=new List<Step>{new Step{Kind="KeyTap",Code=81},new Step{Kind="Wait",Delay=500}};
         Refresh(0);
@@ -43,6 +54,25 @@ internal sealed partial class Desk {
                 "The mouse control added the wrong input: "+mouseActions[i]);
         }
         CloseInput();Require(!capturing&&F<Border>("InputDock").Visibility==Visibility.Collapsed,"Closing input did not resume shortcut mode.");
+        var small=new Size(530,365);
+        FitWorkspace(small.Width);
+        root.Measure(small);root.Arrange(new Rect(small));root.UpdateLayout();
+        Require(compact&&F<Border>("StepsPane").Visibility==Visibility.Visible&&F<Border>("MacroPane").Visibility==Visibility.Collapsed,
+            "Compact layout did not show the steps as its main view.");
+        ShowCompactPane("MacroPane");
+        Require(F<Border>("MacroPane").Visibility==Visibility.Visible&&F<Border>("StepsPane").Visibility==Visibility.Collapsed,
+            "The macro picker is inaccessible at the minimum window size.");
+        ShowCompactPane("EditorPane");
+        Require(F<Border>("EditorPane").Visibility==Visibility.Visible,"Compact settings are inaccessible.");
+        BeginInput(null,null);
+        Require(Grid.GetRow(F<Border>("InputDock"))==2&&F<Grid>("Workspace").Visibility==Visibility.Collapsed,
+            "The small window clipped the input picker instead of opening it in the workspace.");
+        CloseInput();
+        Require(F<Border>("EditorPane").Visibility==Visibility.Visible&&F<Grid>("Workspace").Visibility==Visibility.Visible,
+            "Closing input did not return to the compact editor.");
+        FitWorkspace(1100);
+        Require(!compact&&new[]{"MacroPane","StepsPane","EditorPane"}.All(name=>F<Border>(name).Visibility==Visibility.Visible),
+            "Widening the window did not restore the three-pane layout.");
         current.Steps=new List<Step>{new Step{Kind="Pixel",Code=0,Timeout=5000},new Step{Kind="Wait"}};Refresh(0);
         var timeout=Inputs(Panel("Editor")).OfType<TextBox>().Single(b=>AutomationProperties.GetName(b)=="최대 대기 시간 (초)");
         timeout.Text="1.5";grid.SelectedIndex=1;
@@ -66,7 +96,7 @@ internal sealed partial class Desk {
             "A scheduled macro without its target window was not skipped.");
         profile.CommonKeys[0]=profile.Emergency;
         Require(Register().Contains("겹칩니다"),"Duplicate shortcuts were not detected.");
-        File.WriteAllText(path,"PASS: editor persistence, invalid edit protection, undo/redo, grouped repeats, 108-key dock, all five mouse controls, recording conversion, reservation skip, and shortcut conflict detection.");
+        File.WriteAllText(path,"PASS: editor persistence, undo/redo, grouped repeats, small-window navigation, input picker and wide layout restoration, all five mouse controls, recording conversion, reservation skip, and shortcut conflict detection.");
     }
     internal void PreviewUI() {
         current.Name="Q 입력 반복 예제";

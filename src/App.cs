@@ -71,12 +71,15 @@ internal sealed partial class Desk : Window {
     internal Desk(bool test,bool verifyTray=false) {
         headless=test;
         Title="LoopDesk · 매크로 작업실";
-        Width=Math.Min(1220,SystemParameters.WorkArea.Width-24);Height=Math.Min(880,SystemParameters.WorkArea.Height-24);MinWidth=980;MinHeight=680;WindowStartupLocation=WindowStartupLocation.CenterScreen;
+        Width=Math.Min(1100,SystemParameters.WorkArea.Width-24);Height=Math.Min(740,SystemParameters.WorkArea.Height-24);MinWidth=540;MinHeight=400;WindowStartupLocation=WindowStartupLocation.CenterScreen;
         FontFamily=new FontFamily("Malgun Gothic, Segoe UI");FontSize=14;Background=Brushes.White;
         using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("Desk.xaml")) root=(Grid)XamlReader.Load(stream);
         Content=root;
         library=F<ListBox>("Library");grid=F<DataGrid>("Steps");
         root.SizeChanged+=(s,e)=>FitWorkspace(e.NewSize.Width);
+        On("CompactMacros",()=>ShowCompactPane("MacroPane"));
+        On("CompactSteps",()=>ShowCompactPane("StepsPane"));
+        On("CompactEditor",()=>ShowCompactPane("EditorPane"));
         grid.SizeChanged+=(s,e)=>FitColumns(e.NewSize.Width);
         profile=new Profile();
         if(!test) {
@@ -99,7 +102,7 @@ internal sealed partial class Desk : Window {
         library.SelectionChanged+=(s,e)=>{if(!refreshing && library.SelectedItem is Macro){
             var next=(Macro)library.SelectedItem;
             if(!FlushDrafts()){refreshing=true;library.SelectedItem=current;refreshing=false;return;}
-            CloseInput();current=next;Save();Refresh();
+            CloseInput();current=next;Save();Refresh();ShowCompactPane("StepsPane");
         }};
         grid.SelectionChanged+=(s,e)=>{if(!refreshing) {
             var next=grid.SelectedItem as Row;
@@ -109,7 +112,11 @@ internal sealed partial class Desk : Window {
             }
             EditPanel();Buttons();F<TabControl>("Tabs").SelectedIndex=1;
         }};
-        grid.MouseDoubleClick+=(s,e)=>{if(grid.SelectedItem!=null)F<TabControl>("Tabs").SelectedIndex=1;};
+        grid.MouseDoubleClick+=(s,e)=>{
+            if(grid.SelectedItem==null)return;
+            F<TabControl>("Tabs").SelectedIndex=1;
+            ShowCompactPane("EditorPane");
+        };
         F<TextBox>("Search").TextChanged+=(s,e)=>RefreshLibrary();
         On("AddMacro",()=>{CloseInput();current=new Macro{Name=Unique("새 매크로")};profile.Macros.Add(current);Changed();});
         On("Duplicate",Duplicate);
@@ -162,10 +169,54 @@ internal sealed partial class Desk : Window {
         Text("Message").Foreground=error?Brushes.DarkRed:new SolidColorBrush(Color.FromRgb(52,73,97));
     }
     void FitColumns(double width) {
-        grid.Columns[1].Width=new DataGridLength(Math.Max(130,width-168));
+        int fixedColumns=32+60+76;
+        int scrollAllowance=20;
+        grid.Columns[1].Width=new DataGridLength(Math.Max(130,width-fixedColumns-scrollAllowance));
+    }
+    bool compact;
+    string compactPane="StepsPane";
+    void ShowCompactPane(string pane) {
+        if(!compact)return;
+        CloseInput();
+        compactPane=pane;
+        FitWorkspace(root.ActualWidth);
     }
     void FitWorkspace(double width) {
-        F<Grid>("Workspace").ColumnDefinitions[0].Width=new GridLength(width<1100?145:174);
+        if(width<=0)return;
+        compact=width<870;
+        F<Border>("Header").Padding=compact?new Thickness(10,4,10,4):new Thickness(18,10,18,10);
+        F<Border>("Toolbar").Padding=compact?new Thickness(10,5,8,2):new Thickness(18,12,12,5);
+        var workspace=F<Grid>("Workspace");
+        workspace.Margin=compact?new Thickness(8,0,8,6):new Thickness(14,0,14,10);
+        workspace.ColumnDefinitions[0].Width=new GridLength(compact?0:width<1100?145:174);
+        workspace.ColumnDefinitions[1].Width=new GridLength(compact?0:8);
+        workspace.ColumnDefinitions[3].Width=new GridLength(compact?0:8);
+        workspace.ColumnDefinitions[4].Width=new GridLength(compact?0:290);
+        foreach(string name in new[]{"MacroPane","StepsPane","EditorPane"}) {
+            var pane=F<Border>(name);
+            Grid.SetColumn(pane,compact?2:name=="MacroPane"?0:name=="EditorPane"?4:2);
+            pane.Visibility=!compact||name==compactPane?Visibility.Visible:Visibility.Collapsed;
+            pane.Padding=new Thickness(compact?8:12);
+        }
+        Text("Count").Visibility=compact?Visibility.Collapsed:Visibility.Visible;
+        grid.RowHeight=compact?33:46;
+        FitColumns(grid.ActualWidth);
+        F<GridSplitter>("MacroSplitter").Visibility=compact?Visibility.Collapsed:Visibility.Visible;
+        F<GridSplitter>("EditorSplitter").Visibility=compact?Visibility.Collapsed:Visibility.Visible;
+        Text("Count").Text=current==null||current.Steps.Count==0?"녹화 / 직접 입력 중 편한 방법으로 시작하세요.":
+            current.Steps.Count.ToString("N0")+"개 동작 · "+(compact?"두 번 클릭하여 수정":"선택하면 오른쪽에서 수정");
+        FitInputDock();
+    }
+    void FitInputDock() {
+        bool inputView=compact&&inputPicker!=null;
+        F<Grid>("Workspace").Visibility=inputView?Visibility.Collapsed:Visibility.Visible;
+        F<WrapPanel>("CompactNav").Visibility=compact&&!inputView?Visibility.Visible:Visibility.Collapsed;
+        var dock=F<Border>("InputDock");
+        Grid.SetRow(dock,compact?2:3);
+        dock.Margin=compact?new Thickness(8,0,8,6):new Thickness(14,0,14,10);
+        F<ScrollViewer>("InputScroll").VerticalScrollBarVisibility=compact?ScrollBarVisibility.Disabled:ScrollBarVisibility.Auto;
+        dock.MaxHeight=compact||root.ActualHeight<=0?double.PositiveInfinity:root.ActualHeight*.52;
+        if(inputPicker!=null)inputPicker.UseCompactLayout(compact);
     }
     void AddLog(string message) {
         if(profile.LogOff)return;
@@ -184,7 +235,7 @@ internal sealed partial class Desk : Window {
     void Refresh(int selection=-1) {
         RefreshLibrary();refreshing=true;
         Text("Title").Text=current.Name;Text("Title").ToolTip=current.Name;
-        Text("Count").Text=current.Steps.Count==0?"녹화 / 직접 입력 중 편한 방법으로 시작하세요.":current.Steps.Count.ToString("N0")+"개 동작 · 선택하면 오른쪽에서 수정";
+        Text("Count").Text=current.Steps.Count==0?"녹화 / 직접 입력 중 편한 방법으로 시작하세요.":current.Steps.Count.ToString("N0")+"개 동작 · "+(compact?"두 번 클릭하여 수정":"선택하면 오른쪽에서 수정");
         F<StackPanel>("EmptyState").Visibility=current.Steps.Count==0?Visibility.Visible:Visibility.Collapsed;
         grid.ItemsSource=current.Steps.Select((s,i)=>new Row{Step=s,Number=i+1}).ToList();
         if(selection>=0 && grid.Items.Count>0) {grid.SelectedIndex=Math.Min(grid.Items.Count-1,selection);grid.ScrollIntoView(grid.SelectedItem);}
@@ -812,7 +863,7 @@ internal static class Program {
             if(args.Length>0&&args[0]=="--ui-check"){new Desk(true).CheckEase(args[1]);return;}
             if(args.Length>0&&args[0]=="--preview-ui"){var preview=new Desk(true);app.MainWindow=preview;preview.PreviewUI();app.Run();return;}
             if(args.Length>0&&args[0]=="--render-input"){new Desk(true).RenderInput(args[1]);return;}
-            if(args.Length>0&&args[0]=="--render"){new Desk(true).Render(args[1],int.Parse(args[2]),int.Parse(args[3]));return;}
+            if(args.Length>0&&args[0]=="--render"){new Desk(true).Render(args[1],int.Parse(args[2]),int.Parse(args[3]),args.Length>4&&args[4]=="input");return;}
             if(args.Length>0&&args[0]=="--tray-check") {
                 var fixture=new Desk(true,true);app.MainWindow=fixture;
                 fixture.Dispatcher.BeginInvoke(new Action(async ()=>{

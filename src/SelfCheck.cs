@@ -94,7 +94,7 @@ internal static class SelfCheck {
     internal static void Desktop(string path) {
         var text=new TextBox{FontSize=22,Name="FixtureInput",Margin=new Thickness(24)};
         System.Windows.Automation.AutomationProperties.SetAutomationId(text,"FixtureInput");
-        var board=new Grid{Background=System.Windows.Media.Brushes.Transparent};
+        var board=new Grid{Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(23,143,119))};
         text.VerticalAlignment=VerticalAlignment.Top;
         board.Children.Add(text);
         var w=new Window{Title="LoopDesk · 입력 테스트",Content=board,Width=480,Height=245,Topmost=true,WindowStartupLocation=WindowStartupLocation.CenterScreen};
@@ -165,14 +165,14 @@ internal static class SelfCheck {
                 await play(new[]{
                     new Step{Kind="MouseTap",Code=1,X=100,Y=115},new Step{Kind="MouseTap",Code=2,X=100,Y=115},
                     new Step{Kind="MouseTap",Code=3,X=100,Y=115},new Step{Kind="Wheel",Code=120,X=100,Y=115},
-                    new Step{Kind="Wheel",Code=-120,X=100,Y=115},new Step{Kind="Down",Code=1,X=100,Y=130},
+                    new Step{Kind="Wheel",Code=-120,X=100,Y=115,Delay=100},new Step{Kind="Down",Code=1,X=100,Y=130},
                     new Step{Kind="Move",X=150,Y=140},new Step{Kind="Up",Code=1,X=150,Y=140}});
                 var expected=new[]{0x201,0x202,0x204,0x205,0x207,0x208,0x20a,0x20a,0x201,0x202};
                 var mouse=events.Where(e=>e.Item1>=0x201).ToArray();
-                if(!mouse.Select(e=>e.Item1).SequenceEqual(expected)||(short)(mouse[6].Item2>>16)!=120||
-                    (short)(mouse[7].Item2>>16)!=-120||(short)mouse[9].Item2!=150)
-                    throw new InvalidOperationException("Mouse buttons, wheel directions or drag endpoint differed.");
-                results.Add("PASS 05: left, right, middle, both wheel directions and drag endpoint.");
+                bool mousePassed=mouse.Select(e=>e.Item1).SequenceEqual(expected)&&(short)(mouse[6].Item2>>16)==120&&
+                    (short)(mouse[7].Item2>>16)==-120&&(short)mouse[9].Item2==150;
+                results.Add(mousePassed?"PASS 05: left, right, middle, both wheel directions and drag endpoint.":
+                    "FAIL 05: mouse message transcript "+string.Join(", ",mouse.Select(e=>e.Item1.ToString("X")+":"+e.Item2.ToString("X"))));
                 var oldBounds=Native.Client(h);
                 w.Left+=30;await Task.Delay(80);
                 var newBounds=Native.Client(h);
@@ -192,6 +192,40 @@ internal static class SelfCheck {
                 if(!intervals.Any(ms=>ms>=50&&ms<100)||!intervals.Any(ms=>ms>=125&&ms<210))
                     throw new InvalidOperationException("Expected both randomized delay bands.");
                 results.Add("PASS 08: randomized waits included both bands; measured "+intervals.Min()+"–"+intervals.Max()+" ms.");
+                text.Focus();
+                text.Text="";
+                await play(new[]{new Step{Kind="Pixel",X=100,Y=115,Value="#178F77",Timeout=2000},
+                    new Step{Kind="Text",Value="픽셀 성공"}});
+                expectText("픽셀 성공");
+                text.Text="";
+                await play(new[]{new Step{Kind="Pixel",X=100,Y=115,Value="#FF00FF",Timeout=200,Else=3},
+                    new Step{Kind="Text",Value="잘못된 경로"},new Step{Kind="Text",Value="시간 초과"}});
+                expectText("시간 초과");
+                string template=path+".png";
+                var target=new Rectangle(newBounds.X+90,newBounds.Y+105,20,20);
+                using(var image=Vision.Capture(target))image.Save(template);
+                text.Text="";
+                await play(new[]{new Step{Kind="Image",Value=template,Timeout=2000},
+                    new Step{Kind="Text",Value="이미지 성공"}});
+                expectText("이미지 성공");
+                results.Add("PASS 11: live pixel match, timeout fallback and live image search.");
+
+                text.Text="";
+                await new Desk(true).CheckActiveReservation(h);
+                expectText("예약 실행");
+                results.Add("PASS 12: a due reservation typed into its active target window.");
+
+                m.Steps=new List<Step>{new Step{Kind="KeyDown",Code=162},new Step{Kind="Wait",Delay=5000}};
+                using(var cancel=new CancellationTokenSource())
+                using(var gate=new ManualResetEventSlim(true)) {
+                    var running=Task.Run(()=>new Player(new List<Macro>{m},cancel.Token,gate,delegate{}).Run(m,-1,-1));
+                    await Task.Delay(200);
+                    bool pressed=Native.GetAsyncKeyState(162)<0;
+                    cancel.Cancel();
+                    try{await running;}catch(OperationCanceledException){}
+                    if(!pressed||Native.GetAsyncKeyState(162)<0)throw new InvalidOperationException("Cancellation did not release the held Ctrl key.");
+                }
+                results.Add("PASS 09: cancelling playback released a held Ctrl key.");
                 File.WriteAllLines(path,results);
             } catch(Exception e) {File.WriteAllLines(path,results);File.WriteAllText(path+".error",e.ToString());Environment.ExitCode=1;}
             finally {w.Close();}
