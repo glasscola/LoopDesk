@@ -2,11 +2,13 @@
 
 Windows 10·11 64비트용 마우스·키보드 매크로입니다.
 
-[v2 ZIP 설치본](https://github.com/glasscola/LoopDesk/releases/download/v2/LoopDesk-Install-v2.zip) · [v2 포터블](https://github.com/glasscola/LoopDesk/releases/download/v2/LoopDesk-v2.exe) · [v1.1 사용 설명서](docs/LoopDesk-사용설명서.pdf)
+**[LoopDesk v2 다운로드 · 설치 없이 실행](https://github.com/glasscola/LoopDesk/releases/download/v2/LoopDesk-v2.exe)**
+
+`LoopDesk-v2.exe` 하나를 원하는 폴더에 저장하고 실행하세요. [v1.1 사용 설명서](docs/LoopDesk-사용설명서.pdf)
 
 ## 쉽게 시작하기
 
-1. 기존 LoopDesk가 대기 중이면 알림 영역에서 **완전히 종료**한 뒤 설치합니다.
+1. 기존 LoopDesk가 대기 중이면 알림 영역에서 **완전히 종료**한 뒤 내려받은 `LoopDesk-v2.exe`를 실행합니다.
 2. **녹화:** 대상 창에서 F6으로 녹화, F7로 저장합니다. 저장 후 편집 창이 돌아옵니다.
 3. **직접 입력:** `+ 키·마우스 입력`을 누르면 하단에 108키 키보드가 펼쳐집니다. 키·마우스를 선택하고 반복 횟수와 입력 전 대기를 정한 뒤 `목록에 추가`를 누릅니다.
 4. **수정:** 목록에서 동작을 선택해 오른쪽에서 수정합니다. 기본 동작과 전체 반복 설정은 자동 저장됩니다. 잘못된 입력은 이동 전에 수정해야 합니다. 고급 동작에는 변경 저장 버튼도 있습니다.
@@ -37,10 +39,6 @@ Windows 10·11 64비트용 마우스·키보드 매크로입니다.
 
 ## 빌드와 검증
 
-Windows PowerShell에서 `./src/Build.ps1`로 빌드합니다. 별도의 외부 실행 라이브러리는 필요하지 않습니다. 설치 프로그램은 Inno Setup 6.7 이상에서 `installer/LoopDesk.iss`를 `/DDirectSetup` 옵션과 함께 빌드합니다.
+Windows PowerShell에서 `./src/Build.ps1`로 빌드합니다. 생성된 `LoopDesk.exe`를 바로 실행할 수 있습니다.
 
 실행 파일의 `--check 결과경로`, `--ui-check 결과경로`, `--tray-check 결과경로`로 각각 엔진·저장, 편집 흐름, 전역 단축키·녹화 창 복원 검사를 실행할 수 있습니다. 검사 모드는 개인 매크로를 저장하지 않습니다.
-
-## 임시 디렉터리 실행 오류가 날 때
-
-[ZIP 설치본](https://github.com/glasscola/LoopDesk/releases/download/v2/LoopDesk-Install-v2.zip)을 받아 **모두 압축 해제**한 뒤 `LoopDesk-Install-v2.exe`를 실행하세요. 함께 있는 `.bin` 파일 두 개도 같은 폴더에 있어야 합니다. 이 설치본은 Inno Setup의 `UseSetupLdr=no`로 빌드해 설치 실행 파일을 임시 폴더에서 시작하는 단계를 사용하지 않습니다.
