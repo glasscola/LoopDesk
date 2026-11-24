@@ -54,7 +54,7 @@ internal sealed partial class Desk {
         On("Example",()=>{
             current=new Macro{Name=Unique("Q 10번 입력")};
             current.Steps.Add(new Step{Kind="KeyTap",Code=81,RepeatCount=10,Delay=100});
-            profile.Macros.Add(current);Changed(0);F<TabControl>("Tabs").SelectedIndex=1;
+            profile.Macros.Add(current);Changed(0);F<TabControl>("Tabs").SelectedIndex=1;Practice();
         });
         draftTimer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(650)};
         draftTimer.Tick+=(a,b)=>{draftTimer.Stop();FlushDrafts();};
@@ -76,7 +76,7 @@ internal sealed partial class Desk {
             var visual=b.OriginalSource as DependencyObject;
             while(visual!=null&&!(visual is DataGridRow))visual=VisualTreeHelper.GetParent(visual);
             var target=visual is DataGridRow?((DataGridRow)visual).Item as Row:null;
-            if(source==null||target==null||source==target||Busy)return;
+            if(source==null||target==null||source==target||source.PathCount>1||target.PathCount>1||Busy)return;
             int from=current.Steps.IndexOf(source.Step),to=current.Steps.IndexOf(target.Step);
             if(from<0||to<0)return;
             Mutate(()=>{current.Steps.RemoveAt(from);current.Steps.Insert(to,source.Step);},to);
@@ -145,6 +145,11 @@ internal sealed partial class Desk {
         var p=Panel("Editor");p.Children.Clear();Panel("EditorFooter").Children.Clear();
         if(editRow==null){Label(p,"동작을 선택하면 여기에서 수정할 수 있어요.",true);return;}
         var s=editRow.Step;
+        if(editRow.PathCount>1) {
+            Label(p,"연속한 이동 "+editRow.PathCount+"개",true);
+            ActionButton(p,"이동 경로 펼치기",()=>TogglePath(editRow));
+            return;
+        }
         bool simple=s.Kind=="KeyTap"||s.Kind=="MouseTap"||s.Kind=="Wait"||s.Kind=="Text"||s.Kind=="Move"||s.Kind=="Group"||s.Kind=="Wheel"&&s.Value=="Manual";
         if(!simple){
             AdvancedEditPanel();
@@ -155,7 +160,16 @@ internal sealed partial class Desk {
         var delay=Field(p,s.Kind=="Wait"?"기다릴 시간 (초)":"매번 실행 전 대기 (초)",(s.Delay/1000m).ToString("0.###",CultureInfo.InvariantCulture),10);
         var count=Field(p,s.Kind=="Group"?"이 묶음 반복 (회)":"이 동작 반복 (회)",s.EffectiveRepeats.ToString(),6);
         TextBox value=null;
-        if(s.Kind=="Text"){value=Field(p,"입력할 문장",s.Value,4096);value.AcceptsReturn=true;value.TextWrapping=TextWrapping.Wrap;value.MinHeight=80;}
+        if(s.Kind=="Text"){
+            value=Field(p,"입력할 문장",s.Value,4096);
+            value.AcceptsReturn=true;value.TextWrapping=TextWrapping.Wrap;value.MinHeight=80;
+            if(!String.IsNullOrWhiteSpace(current.Csv)) {
+                ActionButton(p,"CSV 열 넣기",()=>ChooseCsvColumn(value));
+                var resolved=new TextBlock{TextWrapping=TextWrapping.Wrap,MaxHeight=72,Foreground=Brushes.SlateGray};
+                p.Children.Add(resolved);
+                ActionButton(p,"첫 행의 입력 문장 보기",()=>ShowCsvText(value,resolved));
+            }
+        }
         if(s.Kind=="KeyTap"||s.Kind=="MouseTap"||s.Kind=="Wheel") {
             ActionButton(p,"키·마우스 바꾸기",()=>{
                 var target=editRow;var macro=current;
@@ -172,7 +186,7 @@ internal sealed partial class Desk {
             Mutate(()=>{current.Steps[index].X=point.X;current.Steps[index].Y=point.Y;},index);
         }));
         if(s.Kind=="Group") {
-            foreach(var child in s.Children)Label(p,"• "+new Row{Step=child}.Summary+" · "+child.EffectiveRepeats+"회",true);
+            ActionButton(p,"묶음 펼쳐서 편집",()=>EditGroup(editRow.Step,new int[0]));
             ActionButton(p,"묶음 풀고 각각 편집",Ungroup);
         }
         var tools=new WrapPanel();p.Children.Add(tools);
@@ -205,13 +219,22 @@ internal sealed partial class Desk {
         var paths=Check(advanced,"마우스 이동 경로도 녹화",macro.Paths);
         var speed=Field(advanced,"실행 속도 (배)",macro.Speed.ToString(CultureInfo.InvariantCulture),8);
         var process=Field(advanced,"대상 앱 이름 (비우면 모든 앱)",macro.Process,100);
-        ActionButton(advanced,"화면에서 대상 앱 선택",()=>PickPoint(this,(point,window)=>process.Text=Native.App(window)));
+        ActionButton(advanced,"화면에서 대상 앱 선택",()=>PickPoint(this,(point,window)=>process.Text=Native.App(window),false));
+        var follow=Check(advanced,"실행 중 활성 창을 따라감 (대상 앱 미지정 시)",macro.FollowFocus);
         var relative=Check(advanced,"대상 창 기준으로 좌표 기록",macro.WindowCoords);
         relative.IsEnabled=macro.Steps.Count==0;
         relative.ToolTip="좌표 기준은 녹화 전에 정합니다. 기존 매크로에서는 좌표가 바뀌지 않도록 고정합니다.";
         var csv=Field(advanced,"반복 데이터 CSV (선택)",macro.Csv,2048);
         ActionButton(advanced,"CSV 선택",()=>{var d=new OpenFileDialog{Filter="CSV|*.csv"};if(d.ShowDialog(this)==true)csv.Text=d.FileName;});
         var schedule=Field(advanced,"예약 (09:30 또는 +15분은 +15)",macro.Schedule,12);
+        var weekdays=Check(advanced,"평일에만 예약 실행",macro.WeekdaysOnly);
+        var grace=Field(advanced,"대상 창을 기다릴 시간 (분)",macro.ScheduleGrace.ToString(),3);
+        reservationCaption=new TextBlock{TextWrapping=TextWrapping.Wrap,Foreground=Brushes.SlateGray,Margin=new Thickness(0,8,0,0)};
+        advanced.Children.Add(reservationCaption);
+        UpdateReservationCaption();
+        var csvResult=new TextBlock{TextWrapping=TextWrapping.Wrap,MaxHeight=110,Margin=new Thickness(0,6,0,0)};
+        ActionButton(advanced,"CSV 첫 행과 입력 예정 문장 보기",()=>CsvPreview(csv.Text,csvResult));
+        advanced.Children.Add(csvResult);
         Label(advanced,"예약은 LoopDesk가 대기 중이고 대상 앱이 앞에 열려 있을 때 실행됩니다.",true);
         readSettings=()=>{
             string n=name.Text.Trim();
@@ -222,9 +245,15 @@ internal sealed partial class Desk {
             if(!double.TryParse(speed.Text,NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out sp)||sp<.1||sp>8)throw new InvalidOperationException("실행 속도는 0.1~8배입니다.");
             string sc=schedule.Text.Trim();
             if(sc!=""&&(!IsSchedule(sc)||process.Text.Trim()==""||count==0))throw new InvalidOperationException("예약 형식, 대상 앱, 유한 반복 횟수를 확인하세요.");
+            int graceMinutes=Int(grace,0,120,"예약 대기 시간");
             macro.Name=n;macro.Repeats=count;macro.Interval=interval;macro.Speed=sp;macro.Input=modes[mode.SelectedIndex];
             macro.Paths=paths.IsChecked==true;macro.Process=process.Text.Trim();macro.WindowCoords=relative.IsChecked==true;macro.Csv=csv.Text.Trim();
-            if(macro.Schedule!=sc){macro.Schedule=sc;scheduled.Remove(macro.Id);}
+            macro.FollowFocus=follow.IsChecked==true;
+            if(macro.Schedule!=sc||macro.WeekdaysOnly!=(weekdays.IsChecked==true)||macro.ScheduleGrace!=graceMinutes) {
+                macro.Schedule=sc;macro.WeekdaysOnly=weekdays.IsChecked==true;macro.ScheduleGrace=graceMinutes;
+                scheduled.Remove(macro.Id);
+            }
+            UpdateTargetCaption();UpdateReservationCaption();
         };
         settingsStatus=new TextBlock{Text="✓ 자동 저장",FontSize=12,TextWrapping=TextWrapping.Wrap,Foreground=Brushes.SlateGray};
         Panel("SettingsFooter").Children.Add(settingsStatus);Watch(p,()=>DraftChanged(true));
@@ -232,11 +261,12 @@ internal sealed partial class Desk {
     void BeginInput(Step existing,Action<Step> apply) {
         if(Busy||!FlushDrafts())return;
         CloseInput();capturing=true;Unregister();
+        inputOriginal=existing;inputIndex=existing==null?-1:current.Steps.IndexOf(existing);
         inputPicker=new InputPicker(this,existing,PickPoint,step=>{
             if(!FlushDrafts())throw new InvalidOperationException("오른쪽 입력값을 먼저 확인하세요.");
             if(apply!=null)apply(step);else InsertStep(step);
         },CloseInput);
-        F<ContentControl>("InputContent").Content=inputPicker;F<Border>("InputDock").Visibility=Visibility.Visible;
+        UpdateInputContext();F<ContentControl>("InputContent").Content=inputPicker;F<Border>("InputDock").Visibility=Visibility.Visible;
         FitInputDock();
         Note("키를 선택하고 ‘목록에 추가’를 누르세요. 입력 선택 중에는 실행 단축키가 잠시 대기합니다.");
     }
@@ -264,6 +294,8 @@ internal sealed partial class Desk {
         redoItem.Click+=(a,b)=>Safe(Redo);menu.Items.Add(redoItem);
         menu.Items.Add(new Separator());
         MenuCommand(menu,"선택한 동작만 시험","Test");MenuCommand(menu,"클릭 위치 확인","Preview");
+        var selected=grid.SelectedItem as Row;
+        if(selected!=null&&selected.Step.Kind=="Move")AddMenuItem(menu,selected.PathCount>1?"이동 경로 펼치기":"이동 경로 접기",()=>TogglePath(selected));
         MenuCommand(menu,"선택한 구간 다시 녹화","ReplaceSteps");
     }
     void ManageMenu() {
@@ -272,6 +304,7 @@ internal sealed partial class Desk {
         MenuCommand(menu,"매크로 가져오기","Import");MenuCommand(menu,"현재 매크로 내보내기","Export");
         menu.Items.Add(new Separator());
         AddMenuItem(menu,"모든 매크로 백업",()=>Safe(Backup));
+        AddMenuItem(menu,"연습 · Q 10회",Practice);
         AddMenuItem(menu,"백업에서 복원…",()=>Safe(Restore));
         AddMenuItem(menu,"실행 내역 / 오류 확인",ShowHistory);
         var startup=new MenuItem{Header="Windows 로그인 시 자동 대기",IsCheckable=true,IsChecked=!headless&&AutoStartEnabled()};
@@ -281,19 +314,26 @@ internal sealed partial class Desk {
     }
     void Backup() {
         var d=new SaveFileDialog{Filter="LoopDesk 전체 백업|*.loopdesk-backup",FileName="LoopDesk-"+DateTime.Now.ToString("yyyyMMdd-HHmm")};
-        if(d.ShowDialog(this)==true){Storage.Write(d.FileName,profile);Note("모든 매크로와 설정을 백업했습니다.");}
+        if(d.ShowDialog(this)==true){
+            var csv=MessageBox.Show(this,"CSV 데이터도 함께 백업할까요?","묶음 백업",MessageBoxButton.YesNoCancel);
+            if(csv==MessageBoxResult.Cancel)return;
+            Storage.Write(d.FileName,BackupBundle.Create(profile,csv==MessageBoxResult.Yes));
+            Note("매크로, 설정 및 참조 그림을 백업했습니다.");
+        }
     }
     void Restore() {
         if(Busy)return;
         var d=new OpenFileDialog{Filter="LoopDesk 전체 백업|*.loopdesk-backup;*.bak"};
         if(d.ShowDialog(this)!=true)return;
-        var restored=Storage.Read<Profile>(d.FileName);if(restored.Macros==null||restored.Macros.Count==0)throw new InvalidDataException("비어 있는 백업입니다.");
+        var bundle=Storage.Read<BackupBundle>(d.FileName);
+        var restored=bundle.Profile??Storage.Read<Profile>(d.FileName);if(restored.Macros==null||restored.Macros.Count==0)throw new InvalidDataException("비어 있는 백업입니다.");
         foreach(var m in restored.Macros)Storage.Validate(m);
         if(MessageBox.Show(this,"현재 목록을 자동 백업한 뒤 선택한 백업으로 복원할까요?","백업 복원",MessageBoxButton.OKCancel)!=MessageBoxResult.OK)return;
         Storage.Write(Storage.Library+".before-restore.bak",profile);
+        if(bundle.Profile!=null)bundle.Extract(Path.Combine(Storage.Home,"restored",Guid.NewGuid().ToString("N")));
         CloseInput();profile=restored;current=profile.Macros.FirstOrDefault(m=>m.Id==profile.SelectedMacro)??profile.Macros[0];
         if(profile.CommonKeys==null||profile.CommonKeys.Length!=6)profile.CommonKeys=DefaultKeys.ToArray();
-        undo.Clear();redo.Clear();randomOn=!profile.RandomOff;globalRandomRange=ReadGlobalRange();Save();Refresh();Register();Note("백업을 복원했습니다.");
+        scheduled.Clear();undo.Clear();redo.Clear();randomOn=!profile.RandomOff;globalRandomRange=ReadGlobalRange();Save();Refresh();Register();Note("백업을 복원했습니다.");
     }
     void Redo() {
         Stack<List<Step>> stack;if(!redo.TryGetValue(current.Id,out stack)||stack.Count==0)return;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -92,6 +92,11 @@ internal sealed class InputPicker : UserControl {
         add(110,".",21.05,5.45,1,1,false);
         return caps;
     }
+    TextBlock inputContext,neighbors;
+    internal void SetContext(string target,string adjacent) {
+        inputContext.Text=target;inputContext.ToolTip=target;
+        neighbors.Text=adjacent;neighbors.ToolTip=adjacent;
+    }
     internal InputPicker(Window host,Step original,Action<Window,Action<Native.Point,IntPtr>> picker,Action<Step> onApply,Action onDismiss) {
         owner=host;pickPoint=picker;apply=onApply;dismiss=onDismiss;editing=original!=null;originalStep=original;
         FontFamily=host.FontFamily;FontSize=13;Background=Brushes.White;Focusable=true;
@@ -104,7 +109,11 @@ internal sealed class InputPicker : UserControl {
         var close=new Button{Content="닫기 ×",Padding=new Thickness(10,4,10,4),MinHeight=28,Margin=new Thickness(8,0,0,0)};
         DockPanel.SetDock(close,Dock.Right);heading.Children.Add(close);close.Click+=(a,e)=>dismiss();
         summary=new TextBlock{TextWrapping=TextWrapping.Wrap,FontWeight=FontWeights.SemiBold,FontSize=16,Foreground=Ink,VerticalAlignment=VerticalAlignment.Center};
-        heading.Children.Add(summary);body.Children.Add(heading);
+                var context=new StackPanel();
+        inputContext=new TextBlock{Foreground=Ink,FontWeight=FontWeights.SemiBold,TextTrimming=TextTrimming.CharacterEllipsis};
+        neighbors=new TextBlock{Foreground=Brushes.SlateGray,FontSize=11,TextTrimming=TextTrimming.CharacterEllipsis};
+        context.Children.Add(inputContext);context.Children.Add(summary);context.Children.Add(neighbors);
+        heading.Children.Add(context);body.Children.Add(heading);
         var area=new Grid();Grid.SetRow(area,1);body.Children.Add(area);
         area.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
         optionColumn=new ColumnDefinition{Width=new GridLength(232)};

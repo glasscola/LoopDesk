@@ -41,7 +41,7 @@ internal static class Storage {
     internal static void Validate(Macro m) {
         if(m==null || String.IsNullOrWhiteSpace(m.Name) || m.Name.Length>100 || m.Steps==null || m.Steps.Count>200100 || m.Keys==null || m.Keys.Length!=4)
             throw new InvalidDataException("매크로 파일 형식을 확인하세요.");
-        if(m.Repeats<0 || m.Repeats>100000 || m.Interval<0 || m.Interval>86400000 || Double.IsNaN(m.Speed) || m.Speed<.1 || m.Speed>8 || !new[]{"Both","Mouse","Keyboard"}.Contains(m.Input))
+        if(m.ScheduleGrace<0||m.ScheduleGrace>120||m.Repeats<0 || m.Repeats>100000 || m.Interval<0 || m.Interval>86400000 || Double.IsNaN(m.Speed) || m.Speed<.1 || m.Speed>8 || !new[]{"Both","Mouse","Keyboard"}.Contains(m.Input))
             throw new InvalidDataException("반복, 속도 또는 입력 범위가 올바르지 않습니다.");
         foreach(var s in m.Steps) {
             ValidateStep(s);
@@ -63,6 +63,9 @@ internal static class Storage {
             s.RepeatCount<0||s.RepeatCount>100000||s.HoldMs<0||s.HoldMs>86400000||
             s.RandomMin<0||s.RandomMax<s.RandomMin||s.RandomMax>100||s.RandomDirection<0||s.RandomDirection>2)
             throw new InvalidDataException("동작의 시간이나 반복 횟수가 올바르지 않습니다.");
+        if(s.SearchWidth<0||s.SearchWidth>200000||s.SearchHeight<0||s.SearchHeight>200000||
+            s.SearchLeft< -200000||s.SearchLeft>200000||s.SearchTop< -200000||s.SearchTop>200000)
+            throw new InvalidDataException("검색 범위를 확인하세요.");
         if(s.Kind=="Group") {
             if(s.Children==null||s.Children.Count<1||s.Children.Count>200100)throw new InvalidDataException("묶음 안의 동작을 확인하세요.");
             foreach(var child in s.Children) {
@@ -123,7 +126,11 @@ internal static class Vision {
     internal static bool Match(Rectangle region,Bitmap template,int tolerance,CancellationToken token,out Point p) {
         using(var b=Capture(region))return MatchBitmap(b,template,tolerance,token,region.Location,out p);
     }
-    internal static bool MatchBitmap(Bitmap screen,Bitmap template,int tolerance,CancellationToken token,Point offset,out Point p) {
+    internal static bool FindCandidates(Rectangle region,Bitmap template,int tolerance,CancellationToken token,List<Point> matches,int limit=20) {
+        Point first;
+        using(var screen=Capture(region))return MatchBitmap(screen,template,tolerance,token,region.Location,out first,matches,limit);
+    }
+    internal static bool MatchBitmap(Bitmap screen,Bitmap template,int tolerance,CancellationToken token,Point offset,out Point p,List<Point> matches=null,int limit=20) {
         p=Point.Empty;
         int w=screen.Width,h=screen.Height,tw=template.Width,th=template.Height;
         if(tw>w || th>h)return false;
@@ -137,10 +144,17 @@ internal static class Vision {
                 if(!ok)continue;
                 for(int j=0;j<th && ok;j++)for(int k=0;k<tw*4;k+=4)
                     if(!Similar(a,idx+j*w*4+k,b,j*tw*4+k,tolerance)) {ok=false;break;}
-                if(ok) {p=new Point(offset.X+x+tw/2,offset.Y+y+th/2);return true;}
+                if(ok) {
+                    var point=new Point(offset.X+x+tw/2,offset.Y+y+th/2);
+                    if(matches==null){p=point;return true;}
+                    if(matches.Any(previous=>Math.Abs(previous.X-point.X)<Math.Max(1,tw/2)&&Math.Abs(previous.Y-point.Y)<Math.Max(1,th/2)))continue;
+                    if(matches.Count==0)p=point;
+                    matches.Add(point);
+                    if(matches.Count>=limit)return true;
+                }
             }
         }
-        return false;
+        return matches!=null&&matches.Count>0;
     }
     static bool Similar(byte[] a,int ai,byte[] b,int bi,int tolerance) {
         return Math.Abs(a[ai]-b[bi])<=tolerance && Math.Abs(a[ai+1]-b[bi+1])<=tolerance && Math.Abs(a[ai+2]-b[bi+2])<=tolerance;

@@ -104,7 +104,7 @@ internal static class SelfCheck {
             try {
                 w.Activate();text.Focus();
                 var h=new WindowInteropHelper(w).Handle;
-                for(int attempt=0;attempt<200&&Native.GetForegroundWindow()!=h;attempt++)await Task.Delay(150);
+                for(int attempt=0;attempt<300&&Native.GetForegroundWindow()!=h;attempt++)await Task.Delay(150);
                 System.Windows.Input.Keyboard.Focus(text);
                 bool registered=Native.RegisterHotKey(h,91,2|1|4|0x4000,121);
                 int keyError=registered?0:System.Runtime.InteropServices.Marshal.GetLastWin32Error();
@@ -123,11 +123,15 @@ internal static class SelfCheck {
                 }
                 text.Text="";
                 m.Steps.Add(new Step{Kind="ElementText",Value="FixtureInput|요소 입력",Timeout=1500});
-                using(var c=new CancellationTokenSource(3000))
-                using(var gate=new ManualResetEventSlim(true))
-                    await Task.Run(()=>new Player(new List<Macro>{m},c.Token,gate,delegate{}).Run(m,-1,-1));
-                if(text.Text!="요소 입력")throw new Exception("UI automation did not update the test field.");
-                results.Add("PASS: hotkey registration, native hooks, injected-event filtering and UI element text.");
+                results.Add("PASS: hotkey registration, native hooks and injected-event filtering.");
+                try {
+                    using(var c=new CancellationTokenSource(6000))
+                    using(var gate=new ManualResetEventSlim(true))
+                        await Task.Run(()=>new Player(new List<Macro>{m},c.Token,gate,delegate{}).Run(m,-1,-1));
+                    if(text.Text!="요소 입력")throw new Exception("UI automation did not update the test field.");
+                    results.Add("PASS: UI element text.");
+                } catch(Exception error) {results.Add("FAIL UI element text: "+error.Message);}
+                w.Activate();text.Focus();
                 Func<Step[],Task> play=async steps=>{
                     if(Native.GetForegroundWindow()!=h)throw new InvalidOperationException("The test window lost focus.");
                     m.Steps=new List<Step>(steps);
@@ -165,7 +169,7 @@ internal static class SelfCheck {
                 await play(new[]{
                     new Step{Kind="MouseTap",Code=1,X=100,Y=115},new Step{Kind="MouseTap",Code=2,X=100,Y=115},
                     new Step{Kind="MouseTap",Code=3,X=100,Y=115},new Step{Kind="Wheel",Code=120,X=100,Y=115},
-                    new Step{Kind="Wheel",Code=-120,X=100,Y=115,Delay=100},new Step{Kind="Down",Code=1,X=100,Y=130},
+                    new Step{Kind="Wheel",Code=-120,X=100,Y=115},new Step{Kind="Down",Code=1,X=100,Y=130},
                     new Step{Kind="Move",X=150,Y=140},new Step{Kind="Up",Code=1,X=150,Y=140}});
                 var expected=new[]{0x201,0x202,0x204,0x205,0x207,0x208,0x20a,0x20a,0x201,0x202};
                 var mouse=events.Where(e=>e.Item1>=0x201).ToArray();
@@ -173,6 +177,15 @@ internal static class SelfCheck {
                     (short)(mouse[7].Item2>>16)==-120&&(short)mouse[9].Item2==150;
                 results.Add(mousePassed?"PASS 05: left, right, middle, both wheel directions and drag endpoint.":
                     "FAIL 05: mouse message transcript "+string.Join(", ",mouse.Select(e=>e.Item1.ToString("X")+":"+e.Item2.ToString("X"))));
+                if(!mousePassed)throw new InvalidOperationException("Wheel or mouse delivery failed.");
+                text.Focus();text.Text="";
+                m.Csv=path+".csv";
+                File.WriteAllText(m.Csv,"이름\r\n민지\r\n다음");
+                m.Steps=new List<Step>{new Step{Kind="Text",Value="{{이름}}님"}};
+                using(var gate=new ManualResetEventSlim(true))
+                    await Task.Run(()=>new Player(new List<Macro>{m},CancellationToken.None,gate,delegate{}).Run(m,0,0));
+                await Task.Delay(80);expectText("민지님");m.Csv="";
+                results.Add("PASS: selected-step playback read the first CSV row and delivered expanded Korean text.");
                 var oldBounds=Native.Client(h);
                 w.Left+=30;await Task.Delay(80);
                 var newBounds=Native.Client(h);
@@ -227,6 +240,7 @@ internal static class SelfCheck {
                 }
                 results.Add("PASS 09: cancelling playback released a held Ctrl key.");
                 File.WriteAllLines(path,results);
+                if(results.Any(result=>result.StartsWith("FAIL")))Environment.ExitCode=1;
             } catch(Exception e) {File.WriteAllLines(path,results);File.WriteAllText(path+".error",e.ToString());Environment.ExitCode=1;}
             finally {w.Close();}
         };

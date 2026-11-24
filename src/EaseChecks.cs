@@ -96,7 +96,8 @@ internal sealed partial class Desk {
             "A scheduled macro without its target window was not skipped.");
         profile.CommonKeys[0]=profile.Emergency;
         Require(Register().Contains("겹칩니다"),"Duplicate shortcuts were not detected.");
-        File.WriteAllText(path,"PASS: editor persistence, undo/redo, grouped repeats, small-window navigation, input picker and wide layout restoration, all five mouse controls, recording conversion, reservation skip, and shortcut conflict detection.");
+        CheckV4(path);
+        File.WriteAllText(path,"PASS: backup assets, failure paths, first-row CSV validation, folded movements, duplicate image candidates, weekdays and timing bands.\r\nPASS: editor persistence, undo/redo, grouped repeats, small-window navigation, input picker and wide layout restoration, all five mouse controls, recording conversion, reservation skip, and shortcut conflict detection.");
     }
     internal void PreviewUI() {
         current.Name="Q 입력 반복 예제";

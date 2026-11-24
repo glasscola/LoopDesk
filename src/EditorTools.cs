@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -19,7 +19,7 @@ internal sealed partial class Desk {
     Action<Native.Point,IntPtr> pointChoice;
     Window pointHost,pointHint;
     WindowState pointHostState;
-    bool pointWasCapturing,pointMainWasVisible;
+    bool pointWasCapturing,pointMainWasVisible,pointUseTarget;
     int[] globalRandomRange;
 
     void ShowAddMenu() {
@@ -27,7 +27,7 @@ internal sealed partial class Desk {
         
         foreach(var kind in new[]{"Text","Move","Wait"})AddMenuItem(menu,new Step{Kind=kind}.Label,()=>InsertStep(new Step{Kind=kind,Delay=kind=="Wait"?500:0}));
         var advanced=new MenuItem{Header="고급 기능"};menu.Items.Add(advanced);
-        foreach(var kind in new[]{"Click","Image","Pixel","OCR","Element","ElementText","Macro","Jump"})
+        foreach(var kind in new[]{"Click","Image","Pixel","OCR","Element","ElementText","Macro","Jump","WaitWindow"})
             AddMenuItem(advanced,new Step{Kind=kind}.Label,()=>InsertStep(new Step{Kind=kind}));
         menu.IsOpen=true;
     }
@@ -36,7 +36,7 @@ internal sealed partial class Desk {
     }
     void InsertStep(Step step) {
         var row=grid.SelectedItem as Row;
-        int index=row==null?current.Steps.Count:row.Number;
+        int index=row==null?current.Steps.Count:row.Number+row.PathCount-1;
         Mutate(()=>current.Steps.Insert(index,step),index);
         F<TabControl>("Tabs").SelectedIndex=1;
     }
@@ -46,7 +46,7 @@ internal sealed partial class Desk {
         menu.Items.Clear();
         FillEditMenu(menu);menu.Items.Add(new Separator());
         var row=grid.SelectedItem as Row;
-        if(row==null||Busy)return;
+        if(row==null||row.PathCount>1||Busy)return;
         AddMenuItem(menu,row.Step.Skip?"다시 사용":"잠시 사용 안 함",()=>Mutate(()=>row.Step.Skip=!row.Step.Skip,row.Number-1));
     }
     int[] ReadGlobalRange() {
@@ -67,7 +67,7 @@ internal sealed partial class Desk {
         Action update=()=>{
             int low,high;
             preview.Text=int.TryParse(min.Text,out low)&&int.TryParse(max.Text,out high)&&low>=0&&high>=low&&high<=100?
-                "예: 0.1초 → "+(0.1*(100-high)/100).ToString("0.###")+"~"+(0.1*(100+high)/100).ToString("0.###")+"초 범위\n매번 "+low+"~"+high+"% 빠르게 또는 느리게 적용":
+                RandomPreview((grid.SelectedItem as Row)==null?100:((Row)grid.SelectedItem).Step.Delay,current.Speed,low,high):
                 "변동률을 0~100% 사이로 입력하세요.";
         };
         min.TextChanged+=(a,b)=>update();max.TextChanged+=(a,b)=>update();update();
@@ -84,7 +84,8 @@ internal sealed partial class Desk {
         capturing=true;Unregister();
         try {dialog.ShowDialog();} finally {capturing=false;Register();Buttons();}
     }
-    void PickPoint(Window host,Action<Native.Point,IntPtr> apply) {
+    void PickPoint(Window host,Action<Native.Point,IntPtr> apply) {PickPoint(host,apply,true);}
+    void PickPoint(Window host,Action<Native.Point,IntPtr> apply,bool useTarget) {
         if(Busy||pointChoice!=null)return;
         pointWasCapturing=capturing;capturing=true;Unregister();
         if(!Native.RegisterHotKey(hwnd,80,0x4000,121)||!Native.RegisterHotKey(hwnd,81,0x4000,27)) {
@@ -92,7 +93,7 @@ internal sealed partial class Desk {
             capturing=pointWasCapturing;if(!capturing)Register();
             MessageBox.Show(host,"F10 또는 Esc를 다른 프로그램이 사용 중입니다.","위치 지정");return;
         }
-        pointChoice=apply;pointHost=host;pointHostState=host.WindowState;pointMainWasVisible=IsVisible;
+        pointChoice=apply;pointUseTarget=useTarget;pointHost=host;pointHostState=host.WindowState;pointMainWasVisible=IsVisible;
         host.WindowState=WindowState.Minimized;
         if(host!=this)WindowState=WindowState.Minimized;
         var border=new Border{Background=new SolidColorBrush(Color.FromRgb(20,37,56)),Padding=new Thickness(16,10,16,10),
@@ -113,9 +114,9 @@ internal sealed partial class Desk {
                 Native.Point point;
                 if(!Native.GetCursorPos(out point))throw new InvalidOperationException("마우스 위치를 읽을 수 없습니다.");
                 var window=Native.GetAncestor(Native.WindowFromPoint(point),2);
-                if(!String.IsNullOrWhiteSpace(current.Process)&&!String.Equals(Native.App(window),current.Process,StringComparison.OrdinalIgnoreCase))
+                if(pointUseTarget&&!String.IsNullOrWhiteSpace(current.Process)&&!String.Equals(Native.App(window),current.Process,StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("설정한 대상 앱 위에서 위치를 지정하세요.");
-                if(current.WindowCoords) {var rect=Native.Client(window);point.X-=rect.X;point.Y-=rect.Y;}
+                if(pointUseTarget&&current.WindowCoords) {var rect=Native.Client(window);point.X-=rect.X;point.Y-=rect.Y;}
                 apply(point,window);
             }
         } catch(Exception e){error=e.Message;}
