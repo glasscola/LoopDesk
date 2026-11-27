@@ -235,7 +235,7 @@ internal sealed partial class Desk {
         var csvResult=new TextBlock{TextWrapping=TextWrapping.Wrap,MaxHeight=110,Margin=new Thickness(0,6,0,0)};
         ActionButton(advanced,"CSV 첫 행과 입력 예정 문장 보기",()=>CsvPreview(csv.Text,csvResult));
         advanced.Children.Add(csvResult);
-        Label(advanced,"예약은 LoopDesk가 대기 중이고 대상 앱이 앞에 열려 있을 때 실행됩니다.",true);
+        Label(advanced,"예약은 오토 매크로가 대기 중이고 대상 앱이 앞에 열려 있을 때 실행됩니다.",true);
         readSettings=()=>{
             string n=name.Text.Trim();
             if(n.Length==0)throw new InvalidOperationException("매크로 이름을 입력하세요.");
@@ -313,7 +313,7 @@ internal sealed partial class Desk {
         menu.IsOpen=true;
     }
     void Backup() {
-        var d=new SaveFileDialog{Filter="LoopDesk 전체 백업|*.loopdesk-backup",FileName="LoopDesk-"+DateTime.Now.ToString("yyyyMMdd-HHmm")};
+        var d=new SaveFileDialog{Filter="오토 매크로 전체 백업|*.automacro-backup",DefaultExt=".automacro-backup",FileName="오토 매크로-"+DateTime.Now.ToString("yyyyMMdd-HHmm")};
         if(d.ShowDialog(this)==true){
             var csv=MessageBox.Show(this,"CSV 데이터도 함께 백업할까요?","묶음 백업",MessageBoxButton.YesNoCancel);
             if(csv==MessageBoxResult.Cancel)return;
@@ -323,7 +323,7 @@ internal sealed partial class Desk {
     }
     void Restore() {
         if(Busy)return;
-        var d=new OpenFileDialog{Filter="LoopDesk 전체 백업|*.loopdesk-backup;*.bak"};
+        var d=new OpenFileDialog{Filter="오토 매크로 전체 백업|*.automacro-backup;*.loopdesk-backup;*.bak"};
         if(d.ShowDialog(this)!=true)return;
         var bundle=Storage.Read<BackupBundle>(d.FileName);
         var restored=bundle.Profile??Storage.Read<Profile>(d.FileName);if(restored.Macros==null||restored.Macros.Count==0)throw new InvalidDataException("비어 있는 백업입니다.");

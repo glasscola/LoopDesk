@@ -287,7 +287,7 @@ internal sealed class Player {
     }
     IntPtr Target(Macro m,IntPtr expected) {
         var h=Native.GetForegroundWindow();
-        if(own!=IntPtr.Zero && h==own)throw new InvalidOperationException("LoopDesk 창에 포커스가 돌아와 실행을 멈췄습니다.");
+        if(own!=IntPtr.Zero && h==own)throw new InvalidOperationException("오토 매크로 창에 포커스가 돌아와 실행을 멈췄습니다.");
         if(expected!=IntPtr.Zero && expected!=h)throw new InvalidOperationException("실행 중 대상 창이 바뀌었습니다.");
         if(h==IntPtr.Zero&&own!=IntPtr.Zero)throw new InvalidOperationException("활성 창이 없습니다.");
         if(!String.IsNullOrWhiteSpace(m.Process) && !String.Equals(Native.App(h),m.Process,StringComparison.OrdinalIgnoreCase))

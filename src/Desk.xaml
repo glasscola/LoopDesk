@@ -35,7 +35,7 @@
  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
  <Border x:Name="Header" Background="White" BorderBrush="#DFE6EE" BorderThickness="0,0,0,1" Padding="18,10">
   <DockPanel>
-   <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="LoopDesk" FontSize="23" FontWeight="Bold"/><TextBlock Text="  v4" Foreground="#65758A" VerticalAlignment="Center" FontSize="12"/></StackPanel>
+   <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="오토 매크로" FontSize="23" FontWeight="Bold"/><TextBlock Text="  v5" Foreground="#65758A" VerticalAlignment="Center" FontSize="12"/></StackPanel>
    <WrapPanel DockPanel.Dock="Right" HorizontalAlignment="Right">
     <TextBlock x:Name="State" Text="● 준비됨" VerticalAlignment="Center" Foreground="#176B63" Margin="10,0,18,4"/>
     <Button x:Name="Manage" Content="관리 ⋯" Margin="0,0,6,0"/><Button x:Name="Help" Content="사용법" Margin="0"/>

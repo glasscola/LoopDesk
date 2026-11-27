@@ -1,4 +1,4 @@
-param([string]$FileName = 'LoopDesk.exe')
+﻿param([string]$FileName = '오토 매크로.exe')
 $ErrorActionPreference = 'Stop'
 $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $metadata = Join-Path $env:WINDIR 'System32\WinMetadata'
@@ -7,7 +7,7 @@ New-Item -Path $output -ItemType Directory -Force | Out-Null
 $refs = @('System.Drawing.dll','System.Windows.Forms.dll','System.Runtime.Serialization.dll','System.Runtime.WindowsRuntime.dll','Microsoft.VisualBasic.dll','WindowsBase.dll','PresentationCore.dll','PresentationFramework.dll','UIAutomationClient.dll','UIAutomationTypes.dll','System.Xaml.dll')
 $options = @('/nologo','/target:winexe','/platform:x64','/optimize+','/codepage:65001',
     "/out:$output\$FileName",
-    "/win32manifest:$PSScriptRoot\LoopDesk.manifest",
+    "/win32manifest:$PSScriptRoot\AutoMacro.manifest",
     "/resource:$PSScriptRoot\Desk.xaml,Desk.xaml",
     "/lib:$framework,$framework\WPF",
     "/reference:System.Runtime.dll",

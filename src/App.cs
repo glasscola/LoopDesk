@@ -72,7 +72,7 @@ internal sealed partial class Desk : Window {
     void Safe(Action a) {try {if(!FlushDrafts())return;a();} catch(Exception e) {Note(e.Message,true);}}
     internal Desk(bool test,bool verifyTray=false) {
         headless=test;
-        Title="LoopDesk · 매크로 작업실";
+        Title="오토 매크로 · 매크로 작업실";
         Width=Math.Min(1100,SystemParameters.WorkArea.Width-24);Height=Math.Min(740,SystemParameters.WorkArea.Height-24);MinWidth=540;MinHeight=400;WindowStartupLocation=WindowStartupLocation.CenterScreen;
         FontFamily=new FontFamily("Malgun Gothic, Segoe UI");FontSize=14;Background=Brushes.White;
         using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("Desk.xaml")) root=(Grid)XamlReader.Load(stream);
@@ -275,7 +275,7 @@ internal sealed partial class Desk : Window {
         ButtonKey("Random",randomOn?"딜레이 랜덤 · 켜짐":"딜레이 랜덤 · 꺼짐",5);
         Text("State").Text="●  "+BusyLabel;
         Text("EmergencyLabel").Text="긴급 정지  "+profile.Emergency;
-        if(tray!=null)tray.Text="LoopDesk · "+BusyLabel;
+        if(tray!=null)tray.Text="오토 매크로 · "+BusyLabel;
     }
     void ButtonKey(string button,string caption,int action) {
         string common=profile.CommonKeys[action];
@@ -471,14 +471,14 @@ internal sealed partial class Desk : Window {
         current=c;profile.Macros.Add(c);Changed();
     }
     void Import() {
-        var d=new OpenFileDialog{Filter="LoopDesk 매크로|*.loopdesk;*.json"};
+        var d=new OpenFileDialog{Filter="오토 매크로 파일|*.automacro;*.loopdesk;*.json"};
         if(d.ShowDialog(this)!=true)return;
         if(new FileInfo(d.FileName).Length>90000000)throw new InvalidDataException("매크로 파일이 너무 큽니다.");
         var m=Storage.Read<Macro>(d.FileName);Storage.Validate(m);m.Id=Guid.NewGuid().ToString("N");
         m.Name=Unique(m.Name);m.Keys=new string[4];m.Schedule="";profile.Macros.Add(m);current=m;Changed();Note("매크로를 가져왔습니다. 단축키와 예약은 직접 설정하세요.");
     }
     void Export() {
-        var d=new SaveFileDialog{Filter="LoopDesk 매크로|*.loopdesk",DefaultExt=".loopdesk",FileName="macro.loopdesk"};
+        var d=new SaveFileDialog{Filter="오토 매크로 파일|*.automacro",DefaultExt=".automacro",FileName="오토 매크로.automacro"};
         if(d.ShowDialog(this)==true) {Storage.Write(d.FileName,current);Note("매크로 파일을 저장했습니다.");}
     }
     static bool ParseKey(string text,out uint mods,out int vk) {
@@ -758,6 +758,16 @@ internal sealed partial class Desk : Window {
         using(var key=Registry.CurrentUser.OpenSubKey(RunKey))
             return key!=null && String.Equals(key.GetValue("LoopDesk") as string,AutoStartCommand(),StringComparison.OrdinalIgnoreCase);
     }
+    internal void UpdateLegacyAutoStart() {
+        using(var key=Registry.CurrentUser.OpenSubKey(RunKey)) {
+            var command=key==null?null:key.GetValue("LoopDesk") as string;
+            if(String.IsNullOrWhiteSpace(command)||command[0]!='"')return;
+            int end=command.IndexOf('"',1);
+            if(end<0||!String.Equals(command.Substring(end+1).Trim(),"--background",StringComparison.OrdinalIgnoreCase))return;
+            if(!Path.GetFileName(command.Substring(1,end-1)).StartsWith("LoopDesk",StringComparison.OrdinalIgnoreCase))return;
+        }
+        Safe(()=>SetAutoStart(true));
+    }
     static string AutoStartCommand() {return "\""+Assembly.GetExecutingAssembly().Location+"\" --background";}
     void SetAutoStart(bool enabled) {
         using(var key=Registry.CurrentUser.CreateSubKey(RunKey)) {
@@ -778,13 +788,13 @@ internal sealed partial class Desk : Window {
             logs.Clear();show();
         });
         panel.Children.Add(content);show();
-        new Window{Owner=this,Title="LoopDesk · 실행 내역",Width=620,Height=440,Content=panel,FontFamily=FontFamily,
+        new Window{Owner=this,Title="오토 매크로 · 실행 내역",Width=620,Height=440,Content=panel,FontFamily=FontFamily,
             FontSize=FontSize,WindowStartupLocation=WindowStartupLocation.CenterOwner,ShowInTaskbar=false}.ShowDialog();
     }
     void Tray() {
-        tray=new Forms.NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="LoopDesk · 준비됨",Visible=true};
+        tray=new Forms.NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="오토 매크로 · 준비됨",Visible=true};
         var menu=new Forms.ContextMenuStrip();
-        menu.Items.Add("LoopDesk 열기",null,(s,e)=>Dispatcher.Invoke(new Action(ShowDesk)));
+        menu.Items.Add("오토 매크로 열기",null,(s,e)=>Dispatcher.Invoke(new Action(ShowDesk)));
         menu.Items.Add("일시정지 / 재개",null,(s,e)=>Dispatcher.Invoke(new Action(TogglePause)));
         menu.Items.Add("녹화 / 실행 정지",null,(s,e)=>Dispatcher.Invoke(new Action(()=>Stop(false))));
         menu.Items.Add("완전히 종료",null,(s,e)=>Dispatcher.Invoke(new Action(()=>{closing=true;Close();})));
@@ -842,7 +852,7 @@ internal sealed partial class Desk : Window {
         finally {foreach(var mark in marks)mark.Close();ShowDesk();}
     }
     void ShowHelp() {
-        MessageBox.Show(this,"1. 단축키 탭에서 공통 키와 매크로 전용 키를 바꿀 수 있습니다.\n\n2. 기본 F6으로 녹화하고 F7로 저장합니다. 현재 화면에서 F9로 실행하고, F10으로 일시정지·재개하거나 F11로 실행을 끝냅니다.\n\n3. 키·마우스 입력을 누르면 아래에 108키 키보드가 펼쳐집니다. 키와 반복 횟수를 정하고 목록에 추가하세요. 동작을 선택하면 오른쪽에서 수정할 수 있으며 자동 저장됩니다.\n\n4. 창을 닫아도 단축키는 계속 작동합니다. 관리 메뉴에서 Windows 로그인 시 자동 대기를 켤 수 있습니다. 완전히 종료하려면 작업 표시줄 알림 영역의 LoopDesk 메뉴를 사용하세요.","LoopDesk 사용법",MessageBoxButton.OK,MessageBoxImage.Information);
+        MessageBox.Show(this,"1. 단축키 탭에서 공통 키와 매크로 전용 키를 바꿀 수 있습니다.\n\n2. 기본 F6으로 녹화하고 F7로 저장합니다. 현재 화면에서 F9로 실행하고, F10으로 일시정지·재개하거나 F11로 실행을 끝냅니다.\n\n3. 키·마우스 입력을 누르면 아래에 108키 키보드가 펼쳐집니다. 키와 반복 횟수를 정하고 목록에 추가하세요. 동작을 선택하면 오른쪽에서 수정할 수 있으며 자동 저장됩니다.\n\n4. 창을 닫아도 단축키는 계속 작동합니다. 관리 메뉴에서 Windows 로그인 시 자동 대기를 켤 수 있습니다. 완전히 종료하려면 작업 표시줄 알림 영역의 오토 매크로 메뉴를 사용하세요.","오토 매크로 사용법",MessageBoxButton.OK,MessageBoxImage.Information);
     }
     internal async Task CheckTrayControls() {
         // The user's running copy may already own the default shortcuts.
@@ -915,16 +925,20 @@ internal static class Program {
             bool background=args.Contains("--background");
             bool first;
             using(var single=new Mutex(true,"Local\\LoopDesk.Main",out first)) {
-                if(!first){if(!background)MessageBox.Show("LoopDesk가 이미 실행 중입니다. 작업 표시줄 알림 영역에서 여세요.","LoopDesk");return;}
+                if(!first){if(!background)MessageBox.Show("오토 매크로가 이미 실행 중입니다. 작업 표시줄 알림 영역에서 여세요.","오토 매크로");return;}
                 var desk=new Desk(false);
                 app.MainWindow=desk;
                 app.SessionEnding+=(s,e)=>desk.EndSession();
-                if(background)new WindowInteropHelper(desk).EnsureHandle();else desk.Show();
+                if(background)new WindowInteropHelper(desk).EnsureHandle();
+                else {
+                    desk.Show();
+                    desk.UpdateLegacyAutoStart();
+                }
                 app.Run();
             }
         } catch(Exception e) {
             if(args.Length>1)File.WriteAllText(args[1]+".error",e.ToString());
-            else MessageBox.Show(e.Message,"LoopDesk를 열 수 없습니다.",MessageBoxButton.OK,MessageBoxImage.Error);
+            else MessageBox.Show(e.Message,"오토 매크로를 열 수 없습니다.",MessageBoxButton.OK,MessageBoxImage.Error);
             Environment.ExitCode=1;
         }
     }

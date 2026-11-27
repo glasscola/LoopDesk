@@ -97,7 +97,7 @@ internal static class SelfCheck {
         var board=new Grid{Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(23,143,119))};
         text.VerticalAlignment=VerticalAlignment.Top;
         board.Children.Add(text);
-        var w=new Window{Title="LoopDesk · 입력 테스트",Content=board,Width=480,Height=245,Topmost=true,WindowStartupLocation=WindowStartupLocation.CenterScreen};
+        var w=new Window{Title="오토 매크로 · 입력 테스트",Content=board,Width=480,Height=245,Topmost=true,WindowStartupLocation=WindowStartupLocation.CenterScreen};
         var results=new List<string>();
         var app=new Application();
         w.ContentRendered+=async delegate {
