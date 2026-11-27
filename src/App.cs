@@ -63,7 +63,9 @@ internal sealed partial class Desk : Window {
     bool refreshing,headless,pending,paused,closing,capturing,startingRecording;
     volatile bool randomOn;
     long progressTime;
+    const string IconResource="AutoMacro.ico";
     Forms.NotifyIcon tray;
+    System.Drawing.Icon trayIcon;
     DispatcherTimer scheduler;
     string BusyLabel {get{return pending?"시작 대기":recorder!=null?"녹화 중":run!=null?(paused?"일시정지":"실행 중"):"준비됨";}}
     bool Busy {get{return pending || recorder!=null || run!=null;}}
@@ -79,6 +81,12 @@ internal sealed partial class Desk : Window {
         FontFamily=new FontFamily("Malgun Gothic, Segoe UI");FontSize=14;Background=Brushes.White;
         using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("Desk.xaml")) root=(Grid)XamlReader.Load(stream);
         Content=root;
+        using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream(IconResource)) {
+            var decoder=new IconBitmapDecoder(stream,BitmapCreateOptions.PreservePixelFormat,BitmapCacheOption.OnLoad);
+            var icon=decoder.Frames.First(frame=>frame.PixelWidth==32);
+            Icon=icon;
+            F<Image>("BrandIcon").Source=icon;
+        }
         library=F<ListBox>("Library");grid=F<DataGrid>("Steps");
         root.SizeChanged+=(s,e)=>FitWorkspace(e.NewSize.Width);
         On("CompactMacros",()=>ShowCompactPane("MacroPane"));
@@ -169,6 +177,7 @@ internal sealed partial class Desk : Window {
             if(scheduler!=null)scheduler.Stop();
             Unregister();
             if(tray!=null)tray.Dispose();
+            if(trayIcon!=null)trayIcon.Dispose();
         };
         Refresh();
     }
@@ -765,7 +774,8 @@ internal sealed partial class Desk : Window {
             FontSize=FontSize,WindowStartupLocation=WindowStartupLocation.CenterOwner,ShowInTaskbar=false}.ShowDialog();
     }
     void Tray() {
-        tray=new Forms.NotifyIcon{Icon=System.Drawing.SystemIcons.Application,Text="오토 매크로 · 준비됨",Visible=true};
+        trayIcon=System.Drawing.Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location);
+        tray=new Forms.NotifyIcon{Icon=trayIcon,Text="오토 매크로 · 준비됨",Visible=true};
         var menu=new Forms.ContextMenuStrip();
         menu.Items.Add("오토 매크로 열기",null,(s,e)=>Dispatcher.Invoke(new Action(ShowDesk)));
         menu.Items.Add("일시정지 / 재개",null,(s,e)=>Dispatcher.Invoke(new Action(TogglePause)));
@@ -918,6 +928,7 @@ internal static class Program {
     }
 }
 }
+
 
 
 

@@ -1,4 +1,4 @@
-﻿param([string]$FileName = 'AutoMacro-v9.exe')
+﻿param([string]$FileName = '오토매크로v10.exe')
 $ErrorActionPreference = 'Stop'
 $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $output = Join-Path $PSScriptRoot '..\outputs'
@@ -8,6 +8,8 @@ $options = @('/nologo','/target:winexe','/platform:x64','/optimize+','/codepage:
     "/out:$output\$FileName",
     "/win32manifest:$PSScriptRoot\AutoMacro.manifest",
     "/resource:$PSScriptRoot\Desk.xaml,Desk.xaml",
+    "/win32icon:$PSScriptRoot\AutoMacro.ico",
+    "/resource:$PSScriptRoot\AutoMacro.ico,AutoMacro.ico",
     "/lib:$framework,$framework\WPF",
     "/reference:System.Runtime.dll")
 $options += $refs | ForEach-Object { "/reference:$_" }

@@ -1,0 +1,30 @@
+name: Publish Auto Macro v10
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-v10.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'glasscola/LoopDesk' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify and publish the v10 Windows files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AutoMacrov10.exe AutoMacrov10.zip; do
+            curl -fsSLo "$name" "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/downloads/$name"
+          done
+          sha256sum --check <<'CHECKSUMS'
+          0123f293e7f0f0b2de1fbf734bfc3d5bece4da2887bd2822d12ded4be8844970  AutoMacrov10.exe
+          0b9839affbf63419b42c4f0c0e83f2f20105af0133880152b398bf340a9bdd95  AutoMacrov10.zip
+          CHECKSUMS
+          gh release create v10 AutoMacrov10.exe AutoMacrov10.zip \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title '오토 매크로 v10 · Windows x64' \
+            --notes '마우스 포인터와 재생 기호를 넣은 전용 아이콘을 실행 파일, 앱 창, 작업 표시줄, 알림 영역에 적용했습니다. 버튼과 실행 시나리오 241개, 내장 검사 4종, Windows 아이콘 검사를 통과했습니다.'
