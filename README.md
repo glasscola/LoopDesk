@@ -1,4 +1,6 @@
-﻿# 오토 매크로 v9 · Windows x64
+# 오토 매크로 v9 · Windows x64
+
+[Windows x64 ZIP](https://raw.githubusercontent.com/glasscola/LoopDesk/main/downloads/AutoMacro-v9-Windows-x64.zip) · [실행 파일](https://raw.githubusercontent.com/glasscola/LoopDesk/main/downloads/AutoMacro-v9.exe)
 
 ZIP을 풀고 `AutoMacro-v9.exe`를 실행하세요. 이전 버전이 알림 영역에 열려 있으면 해당 앱에서 **완전히 종료**를 선택한 뒤 실행하세요.
 
@@ -13,4 +15,3 @@ ZIP을 풀고 `AutoMacro-v9.exe`를 실행하세요. 이전 버전이 알림 영
 기본 단축키는 `F6` 녹화 시작, `F7` 종료, `F9` 실행, `F10` 일시정지·재개, `F11` 정지입니다. 긴급 정지는 `Ctrl+Alt+Esc`입니다.
 
 소스에서 빌드하려면 Windows PowerShell에서 `src/Build.ps1`을 실행하세요. 검증 결과는 `검증.md`와 `v9-버튼별-검증.tsv`에 있습니다.
-

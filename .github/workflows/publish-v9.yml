@@ -1,0 +1,30 @@
+name: Publish Auto Macro v9
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-v9.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'glasscola/LoopDesk' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify and publish the v9 Windows files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AutoMacro-v9.exe AutoMacro-v9-Windows-x64.zip; do
+            curl -fsSLo "$name" "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/downloads/$name"
+          done
+          sha256sum --check <<'CHECKSUMS'
+          a221a0a8cb787948cdfe712bab27983827ab486dd2cb5bc592ee56c1ee4402db  AutoMacro-v9.exe
+          960cd685f4ab1380d9f00ea14f1ca65d795acb422215fbb12912f8b18b9a9feb  AutoMacro-v9-Windows-x64.zip
+          CHECKSUMS
+          gh release create v9 AutoMacro-v9.exe AutoMacro-v9-Windows-x64.zip \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title '오토 매크로 v9 · Windows x64' \
+            --notes '왼쪽 빠른 동작과 내 키를 추가했습니다. 이미지, 색상, OCR, UI 요소 인식과 연결·분기·창 대기 동작을 제거했습니다. 버튼 및 실행 시나리오 246개와 내장 검사 4종을 통과했습니다.'
