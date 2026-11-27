@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -73,10 +73,8 @@ internal sealed partial class Desk {
         FitWorkspace(1100);
         Require(!compact&&new[]{"MacroPane","StepsPane","EditorPane"}.All(name=>F<Border>(name).Visibility==Visibility.Visible),
             "Widening the window did not restore the three-pane layout.");
-        current.Steps=new List<Step>{new Step{Kind="Pixel",Code=0,Timeout=5000},new Step{Kind="Wait"}};Refresh(0);
-        var timeout=Inputs(Panel("Editor")).OfType<TextBox>().Single(b=>AutomationProperties.GetName(b)=="최대 대기 시간 (초)");
-        timeout.Text="1.5";grid.SelectedIndex=1;
-        Require(current.Steps[0].Timeout==1500&&grid.SelectedIndex==1,"Advanced timing was not saved or selection was lost.");
+        current.Steps=new List<Step>{new Step{Kind="OCR"},new Step{Kind="Wait"}};Refresh(0);
+        Require(Panel("Editor").Children.OfType<Button>().Any(b=>(string)b.Content=="이 동작 삭제"),"Removed actions cannot be deleted.");
         var pairs=SimplifyRecording(new List<Step>{new Step{Kind="KeyDown",Code=81,Delay=70},new Step{Kind="KeyUp",Code=81,Delay=40}});
         Require(pairs.Count==1&&pairs[0].Kind=="KeyTap"&&pairs[0].Delay==70&&pairs[0].HoldMs==40,"Recording simplification changed key timing.");
         var chord=SimplifyRecording(new List<Step>{new Step{Kind="KeyDown",Code=162},new Step{Kind="KeyDown",Code=81},new Step{Kind="KeyUp",Code=81},new Step{Kind="KeyUp",Code=162}});
@@ -97,7 +95,7 @@ internal sealed partial class Desk {
         profile.CommonKeys[0]=profile.Emergency;
         Require(Register().Contains("겹칩니다"),"Duplicate shortcuts were not detected.");
         CheckV4(path);
-        File.WriteAllText(path,"PASS: backup assets, failure paths, first-row CSV validation, folded movements, duplicate image candidates, weekdays and timing bands.\r\nPASS: editor persistence, undo/redo, grouped repeats, small-window navigation, input picker and wide layout restoration, all five mouse controls, recording conversion, reservation skip, and shortcut conflict detection.");
+        File.WriteAllText(path,"PASS: backup assets, failure paths, first-row CSV validation, folded movements, removed-action editing, weekdays and timing bands.\r\nPASS: editor persistence, undo/redo, grouped repeats, small-window navigation, input picker and wide layout restoration, all five mouse controls, recording conversion, reservation skip, and shortcut conflict detection.");
     }
     internal void PreviewUI() {
         current.Name="Q 입력 반복 예제";
@@ -106,3 +104,5 @@ internal sealed partial class Desk {
     }
 }
 }
+
+

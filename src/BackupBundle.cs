@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -22,16 +22,13 @@ public sealed class BackupBundle {
     }
 
     internal static BackupBundle Create(Profile profile,bool includeCsv) {
-        var paths=profile.Macros.SelectMany(m=>m.Steps.SelectMany(Walk))
-            .Where(s=>s.Kind=="Image").Select(s=>s.Value);
-        if(includeCsv)paths=paths.Concat(profile.Macros.Select(m=>m.Csv));
+        var paths=includeCsv?profile.Macros.Select(m=>m.Csv):Enumerable.Empty<string>();
         var assets=new List<BackupAsset>();
         long total=0;
         foreach(string path in paths.Where(p=>!String.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase)) {
-            if(path.Contains("{{"))throw new InvalidDataException("변수로 정한 그림 경로는 묶을 수 없습니다: "+path);
             var file=new FileInfo(path);
             total+=file.Length;
-            if(total>MaxBytes)throw new InvalidDataException("그림과 CSV의 합계가 48MB를 넘습니다.");
+            if(total>MaxBytes)throw new InvalidDataException("CSV 파일의 합계가 48MB를 넘습니다.");
             assets.Add(new BackupAsset {Original=path,Extension=file.Extension,Content=File.ReadAllBytes(path)});
         }
         return new BackupBundle {Profile=profile,Assets=assets,Version=1};
@@ -60,3 +57,4 @@ public sealed class BackupBundle {
     }
 }
 }
+

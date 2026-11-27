@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -48,7 +48,7 @@ internal sealed partial class Desk {
     }
 
     static bool HasFixedPoint(Step step) {
-        return !step.CurrentPointer && new[]{"Click","MouseTap","Down","Up","Move","Wheel","HWheel","Pixel"}.Contains(step.Kind);
+        return !step.CurrentPointer && new[]{"Click","MouseTap","Down","Up","Move","Wheel","HWheel"}.Contains(step.Kind);
     }
 
     static string ShortStep(Step step) {
@@ -56,7 +56,7 @@ internal sealed partial class Desk {
     }
 
     void UpdateInputContext() {
-        if(inputPicker==null)return;
+        if(inputPicker==null||inputPicker.IsFavoriteKey)return;
         var steps=current.Steps;
         var row=grid.SelectedItem as Row;
         int index=inputOriginal==null?(row==null?steps.Count:row.Number+row.PathCount-1):inputIndex;
@@ -152,6 +152,8 @@ internal sealed partial class Desk {
                     };
                     await Task.Run(()=>player.Run(example,-1,-1));
                 }
+                for(int attempt=0;attempt<15&&receiver.Text.Count(ch=>Char.ToUpperInvariant(ch)=='Q')<10;attempt++)
+                    await Task.Delay(20);
                 int count=receiver.Text.Count(ch=>Char.ToUpperInvariant(ch)=='Q');
                 result.Text="예상 10회 · 실제 수신 "+count+"회"+(count==10?"":" · 입력 언어와 연습칸 포커스를 확인하세요.");
             } catch(Exception error) {result.Text=error.Message;}
@@ -176,13 +178,19 @@ internal sealed partial class Desk {
         catch(Exception error){result.Text=error.Message;}
     }
 
-    void CsvPreview(string path,TextBlock result) {
+    void CsvPreview(string path,TextBlock result,Macro schedule=null) {
         try {
-            var row=Storage.ReadCsv(path).First();
+            var rows=Storage.ReadCsv(path);
+            var row=rows[0];
             var text=current.Steps.SelectMany(BackupBundle.Walk).FirstOrDefault(step=>step.Kind=="Text"&&step.Value.Contains("{{"));
             result.Text="첫 행 · "+String.Join(" · ",row.Select(pair=>pair.Key+" = "+pair.Value));
             if(text!=null)result.Text+="\n입력 예정 · "+Player.Expand(text.Value,row);
+            if(schedule!=null) {
+                var numbers=rows.Select((entry,index)=>new{entry,index}).ToDictionary(item=>item.entry,item=>item.index+1);
+                result.Text+="\n처음 실행할 CSV 행 · "+String.Join(" → ",Player.Visits(schedule,rows,false).Take(4).Select(visit=>numbers[visit.Item1]));
+            }
         } catch(Exception error) {result.Text=error.Message;}
     }
 }
 }
+

@@ -1,0 +1,263 @@
+﻿검사 구분	검사 항목	결과	관측 내용
+buttons	toolbar/help	PASS	
+buttons	toolbar/add-macro	PASS	
+buttons	library/search	PASS	
+buttons	layout/compact-macros	PASS	
+buttons	layout/compact-editor	PASS	
+buttons	layout/compact-steps	PASS	
+buttons	toolbar/record-and-end	PASS	
+buttons	toolbar/play-pause-resume-stop	PASS	
+buttons	edit-menu/selected-test	PASS	
+buttons	editor/one-step-test	PASS	
+buttons	edit-menu/point-preview	PASS	
+buttons	edit-menu/re-record-selection	PASS	
+buttons	toolbar/direct-input	PASS	
+buttons	picker/key/1/Esc	PASS	
+buttons	picker/key/2/F1	PASS	
+buttons	picker/key/3/F2	PASS	
+buttons	picker/key/4/F3	PASS	
+buttons	picker/key/5/F4	PASS	
+buttons	picker/key/6/F5	PASS	
+buttons	picker/key/7/F6	PASS	
+buttons	picker/key/8/F7	PASS	
+buttons	picker/key/9/F8	PASS	
+buttons	picker/key/10/F9	PASS	
+buttons	picker/key/11/F10	PASS	
+buttons	picker/key/12/F11	PASS	
+buttons	picker/key/13/F12	PASS	
+buttons	picker/key/14/PrtSc	PASS	
+buttons	picker/key/15/ScrLk	PASS	
+buttons	picker/key/16/Pause	PASS	
+buttons	picker/key/17/한/영	PASS	
+buttons	picker/key/18/한자	PASS	
+buttons	picker/key/19/Vol −	PASS	
+buttons	picker/key/20/Vol +	PASS	
+buttons	picker/key/21/`	PASS	
+buttons	picker/key/22/1	PASS	
+buttons	picker/key/23/2	PASS	
+buttons	picker/key/24/3	PASS	
+buttons	picker/key/25/4	PASS	
+buttons	picker/key/26/5	PASS	
+buttons	picker/key/27/6	PASS	
+buttons	picker/key/28/7	PASS	
+buttons	picker/key/29/8	PASS	
+buttons	picker/key/30/9	PASS	
+buttons	picker/key/31/0	PASS	
+buttons	picker/key/32/−	PASS	
+buttons	picker/key/33/=	PASS	
+buttons	picker/key/34/Backspace	PASS	
+buttons	picker/key/35/Tab	PASS	
+buttons	picker/key/36/Q	PASS	
+buttons	picker/key/37/W	PASS	
+buttons	picker/key/38/E	PASS	
+buttons	picker/key/39/R	PASS	
+buttons	picker/key/40/T	PASS	
+buttons	picker/key/41/Y	PASS	
+buttons	picker/key/42/U	PASS	
+buttons	picker/key/43/I	PASS	
+buttons	picker/key/44/O	PASS	
+buttons	picker/key/45/P	PASS	
+buttons	picker/key/46/[	PASS	
+buttons	picker/key/47/]	PASS	
+buttons	picker/key/48/\	PASS	
+buttons	picker/key/49/Caps	PASS	
+buttons	picker/key/50/A	PASS	
+buttons	picker/key/51/S	PASS	
+buttons	picker/key/52/D	PASS	
+buttons	picker/key/53/F	PASS	
+buttons	picker/key/54/G	PASS	
+buttons	picker/key/55/H	PASS	
+buttons	picker/key/56/J	PASS	
+buttons	picker/key/57/K	PASS	
+buttons	picker/key/58/L	PASS	
+buttons	picker/key/59/;	PASS	
+buttons	picker/key/60/'	PASS	
+buttons	picker/key/61/Enter	PASS	
+buttons	picker/key/62/Shift	PASS	
+buttons	picker/key/63/Z	PASS	
+buttons	picker/key/64/X	PASS	
+buttons	picker/key/65/C	PASS	
+buttons	picker/key/66/V	PASS	
+buttons	picker/key/67/B	PASS	
+buttons	picker/key/68/N	PASS	
+buttons	picker/key/69/M	PASS	
+buttons	picker/key/70/,	PASS	
+buttons	picker/key/71/.	PASS	
+buttons	picker/key/72//	PASS	
+buttons	picker/key/73/Shift	PASS	
+buttons	picker/key/74/Ctrl	PASS	
+buttons	picker/key/75/Win	PASS	
+buttons	picker/key/76/Alt	PASS	
+buttons	picker/key/77/Space	PASS	
+buttons	picker/key/78/Alt	PASS	
+buttons	picker/key/79/Win	PASS	
+buttons	picker/key/80/Menu	PASS	
+buttons	picker/key/81/Ctrl	PASS	
+buttons	picker/key/82/Ins	PASS	
+buttons	picker/key/83/Home	PASS	
+buttons	picker/key/84/PgUp	PASS	
+buttons	picker/key/85/Del	PASS	
+buttons	picker/key/86/End	PASS	
+buttons	picker/key/87/PgDn	PASS	
+buttons	picker/key/88/↑	PASS	
+buttons	picker/key/89/←	PASS	
+buttons	picker/key/90/↓	PASS	
+buttons	picker/key/91/→	PASS	
+buttons	picker/key/92/Num	PASS	
+buttons	picker/key/93//	PASS	
+buttons	picker/key/94/*	PASS	
+buttons	picker/key/95/−	PASS	
+buttons	picker/key/96/7	PASS	
+buttons	picker/key/97/8	PASS	
+buttons	picker/key/98/9	PASS	
+buttons	picker/key/99/4	PASS	
+buttons	picker/key/100/5	PASS	
+buttons	picker/key/101/6	PASS	
+buttons	picker/key/102/1	PASS	
+buttons	picker/key/103/2	PASS	
+buttons	picker/key/104/3	PASS	
+buttons	picker/key/105/+	PASS	
+buttons	picker/key/106/Enter	PASS	
+buttons	picker/key/107/0	PASS	
+buttons	picker/key/108/.	PASS	
+buttons	picker/keyboard-count	PASS	
+buttons	picker/keyboard-hold-repeat-delay	PASS	
+buttons	picker/mouse-tab	PASS	
+buttons	picker/mouse/왼쪽 클릭	PASS	
+buttons	picker/mouse/오른쪽 클릭	PASS	
+buttons	picker/mouse/휠 클릭	PASS	
+buttons	picker/mouse/휠 위로	PASS	
+buttons	picker/mouse/휠 아래로	PASS	
+buttons	picker/mouse/double-click-setting	PASS	
+buttons	picker/mouse/point-selection-cancel	PASS	
+buttons	picker/keyboard-tab	PASS	
+buttons	picker/close	PASS	
+buttons	editor/replace-key	PASS	
+buttons	quick/왼쪽 클릭	PASS	
+buttons	quick/오른쪽 클릭	PASS	
+buttons	quick/더블클릭	PASS	
+buttons	quick/휠 위	PASS	
+buttons	quick/휠 아래	PASS	
+buttons	quick/마우스 이동	PASS	
+buttons	quick/문장 입력	PASS	
+buttons	quick/대기 0.5초	PASS	
+buttons	quick/Enter	PASS	
+buttons	quick/Tab	PASS	
+buttons	quick/after-selected-and-at-end	PASS	
+buttons	quick/custom-cancel	PASS	
+buttons	quick/custom-save-and-reuse	PASS	
+buttons	quick/custom-edit-combination	PASS	
+buttons	quick/custom-profile-and-backup-roundtrip	PASS	
+buttons	quick/custom-delete	PASS	
+buttons	quick/library-open-search-new-and-switch	PASS	
+buttons	quick/compact-navigation	PASS	
+buttons	quick/advanced-add-removed	PASS	
+buttons	editor/skip-checkbox	PASS	
+buttons	edit-menu/선택한 동작 복제	PASS	
+buttons	edit-menu/선택한 동작 삭제	PASS	
+buttons	edit-menu/위로 이동	PASS	
+buttons	edit-menu/아래로 이동	PASS	
+buttons	edit-menu/group	PASS	
+buttons	group/edit-save	PASS	
+buttons	group/edit-cancel	PASS	
+buttons	group/ungroup	PASS	
+buttons	edit-menu/undo	PASS	
+buttons	edit-menu/redo	PASS	
+buttons	edit-menu/path-expand	PASS	
+buttons	edit-menu/path-collapse	PASS	
+buttons	row-menu/disable-enable	PASS	
+buttons	editor/csv-column-menu-and-insert	PASS	
+buttons	editor/csv-text-preview	PASS	
+buttons	settings/csv-preview	PASS	
+buttons	manage/duplicate	PASS	
+buttons	manage/delete-confirmation-cancel	PASS	
+buttons	manage/history-save-toggle-clear	PASS	
+buttons	settings/random-enable-save	PASS	
+buttons	settings/repeat-and-input-fields	PASS	
+buttons	manage/import/cancel	PASS	
+buttons	manage/export/cancel	PASS	
+buttons	manage/backup/cancel	PASS	
+buttons	manage/restore/cancel	PASS	
+buttons	settings/csv-picker-cancel	PASS	
+buttons	hotkeys/change-button/1	PASS	
+buttons	hotkeys/change-button/2	PASS	
+buttons	hotkeys/change-button/3	PASS	
+buttons	hotkeys/change-button/4	PASS	
+buttons	hotkeys/change-button/5	PASS	
+buttons	hotkeys/change-button/6	PASS	
+buttons	hotkeys/change-button/7	PASS	
+buttons	hotkeys/change-button/8	PASS	
+buttons	hotkeys/change-button/9	PASS	
+buttons	hotkeys/change-button/10	PASS	
+buttons	hotkeys/change-button/11	PASS	
+buttons	settings/select-target-app	PASS	
+buttons	editor/move-point-picker	PASS	
+buttons	editor/click-point-picker	PASS	
+buttons	picker/mouse/explicit-point	PASS	
+buttons	manage/export-import-files	PASS	
+buttons	settings/csv-picker-file-selection	PASS	
+buttons	manage/delete-confirmation-yes	PASS	
+buttons	manage/backup-and-restore	PASS	
+buttons	manage/exit	PASS	
+supplemental	toolbar/example-and-practice	PASS	
+supplemental	manage/practice-and-test-button	PASS	
+supplemental	recording/review/새 매크로로 저장	PASS	
+supplemental	recording/review/현재 매크로 교체	PASS	
+supplemental	recording/review/저장하지 않기	PASS	
+supplemental	hotkeys/change-save-remove-and-cancel	PASS	
+supplemental	hotkeys/conflict-keeps-old	PASS	
+supplemental	group/physical-point-pick-cancel	PASS	
+supplemental	group/replace-nested-key	PASS	
+supplemental	tray/open	PASS	
+supplemental	tray/pause-resume-and-stop	PASS	
+supplemental	recording/re-record-selected-replaces-before-after	PASS	
+supplemental	manage/windows-login-autostart	PASS	
+supplemental	tray/exit	PASS	
+followup	toolbar/example-button	PASS	
+followup	manage/practice-open-button	PASS	
+followup	practice/Q-test-button/end-to-end	PASS	
+v6	practice/actual-Q-click-10	PASS	
+v6	play/absolute-outside-click-blocked	PASS	
+v6	edit/next-step-breakpoint-continue-keeps-foreground	PASS	
+v6	play/preflight-blocks-before-receiver	PASS	
+v61	v61/csv-A-B-pause-resume-C-all-rows	PASS	
+remaining	library/select-macro	PASS	
+remaining	picker/mouse/wheel-notches	PASS	
+remaining	legacy/blocked-before-input/Image	PASS	
+remaining	legacy/blocked-before-input/Pixel	PASS	
+remaining	legacy/blocked-before-input/OCR	PASS	
+remaining	legacy/blocked-before-input/Element	PASS	
+remaining	legacy/blocked-before-input/ElementText	PASS	
+remaining	legacy/blocked-before-input/Macro	PASS	
+remaining	legacy/blocked-before-input/Jump	PASS	
+remaining	legacy/blocked-before-input/WaitWindow	PASS	
+remaining	legacy/nested-remove-preserves-other-lines	PASS	
+remaining	editor/row-double-click-opens-compact-editor	PASS	
+remaining	practice/Q-repeat/1	PASS	
+remaining	practice/Q-repeat/2	PASS	
+remaining	practice/Q-repeat/3	PASS	
+end-to-end	hotkeys/actual-global-record-end-play-pause-stop-emergency-random	PASS	
+quick-desktop	recording/injection-filter-hook-fixture-and-Windows-replay	PASS	
+quick-desktop	quick/position-shortcut-used	NOTE	Ctrl+Alt+F8
+quick-desktop	quick/actual-position-key-and-mouse-move	PASS	
+quick-desktop	quick/real-Windows-key-click-wheel-wait-text	PASS	
+compatibility	compatibility/v5 profile	PASS	1 macro(s)
+compatibility	compatibility/v6 profile	PASS	1 macro(s)
+compatibility	compatibility/v7 profile	PASS	1 macro(s)
+compatibility	compatibility/v8 profile	PASS	2 macro(s)
+compatibility	release/no-recognition-runtime	PASS	No Vision type or Windows OCR / UI Automation client dependency
+내장 검사	check	PASS	PASS: profile, shortcuts, backup, random timing, pause and cancellation, CSV, and removed-action preflight.
+내장 검사	ui-check	PASS	PASS: backup assets, failure paths, first-row CSV validation, folded movements, removed-action editing, weekdays and timing bands.
+내장 검사	ui-check	PASS	PASS: editor persistence, undo/redo, grouped repeats, small-window navigation, input picker and wide layout restoration, all five mouse controls, recording conversion, reservation skip, and shortcut conflict detection.
+내장 검사	desktop-check	PASS	PASS 03: Korean Unicode input into Windows TextBox.
+내장 검사	desktop-check	PASS	PASS: hotkey registration, native hooks and injected-event filtering.
+내장 검사	desktop-check	PASS	PASS 01: Windows TextBox received exactly 10 Q taps.
+내장 검사	desktop-check	PASS	PASS 07: single, grouped and whole-macro repeats reached the TextBox in the right order.
+내장 검사	desktop-check	PASS	PASS 04: Enter and numpad Enter differed, and a 500 ms hold released once.
+내장 검사	desktop-check	PASS	PASS 05: left, right, middle, both wheel directions and drag endpoint.
+내장 검사	desktop-check	PASS	PASS: selected-step playback read the first CSV row and delivered expanded Korean text.
+내장 검사	desktop-check	PASS	PASS 06 (single display): client-relative click followed a moved window.
+내장 검사	desktop-check	PASS	PASS 08: randomized waits included both bands; measured 60–143 ms.
+내장 검사	desktop-check	PASS	PASS 12: a due reservation typed into its active target window.
+내장 검사	desktop-check	PASS	PASS 09: cancelling playback released a held Ctrl key.
+내장 검사	tray-check	PASS	PASS: recording hides the editor and ending recording restores it; background playback and shortcut dispatch also pass.

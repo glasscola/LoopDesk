@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -8,8 +8,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Text;
 using System.Threading.Tasks;
-using System.Windows.Automation;
 
 namespace LoopDesk {
 public sealed class Step {
@@ -30,9 +30,15 @@ public sealed class Step {
     public bool DoubleClick {get;set;}
     public int SearchLeft {get;set;} public int SearchTop {get;set;}
     public int SearchWidth {get;set;} public int SearchHeight {get;set;}
+    public int SearchDpi {get;set;}
+    public string WindowTitle {get;set;}
     public int Then {get;set;} public int Else {get;set;}
     public string Value {get;set;} public bool Skip {get;set;}
+    public bool Breakpoint {get;set;}
     public Step() { Kind="Wait"; Value=""; Timeout=5000; }
+    internal string KeySlot {get{return "K"+Code+(Extended?"E":"");}}
+    internal bool Removed {get{return Then!=0||Else!=0||RemovedKinds.Contains(Kind);}}
+    static readonly string[] RemovedKinds={"Image","Pixel","OCR","Element","ElementText","Macro","Jump","WaitWindow"};
     public Step Copy() {var copy=(Step)MemberwiseClone();if(Children!=null)copy.Children=Children.Select(c=>c.Copy()).ToList();return copy;}
     public string Label { get { string[] names={"대기","마우스 이동","버튼 누름","버튼 뗌","휠 스크롤","가로 스크롤","키 누름","키 뗌","문장 입력","지정한 곳 클릭","버튼 그림으로 찾기","색상 기다리기","글자 기다리기","버튼 선택","다른 매크로 실행","조건에 따라 이동","입력칸 선택","키 입력","마우스 클릭","동작 묶음","다음 창 기다리기"};
         int i=Array.IndexOf(Kinds,Kind); return i<0?Kind:names[i]; } }
@@ -62,6 +68,7 @@ public sealed class Macro {
     public int ScheduleGrace {get;set;}
     public string LastReservation {get;set;}
     public string Schedule {get;set;} public string Csv {get;set;}
+    public bool CsvWholeCycle {get;set;} public int CsvRowInterval {get;set;}
     public string Display {get {return Name;}}
     public Macro() {Id=Guid.NewGuid().ToString("N");Name="새 매크로";Steps=new List<Step>();Keys=new string[4];Repeats=1;Speed=1;Input="Both";Paths=true;Process="";Schedule="";Csv="";}
 }
@@ -129,7 +136,8 @@ internal static class Native {
 internal sealed class Recorder : IDisposable {
     readonly Native.Hook mouse,key;
     IntPtr mh,kh; readonly Stopwatch clock=new Stopwatch(); long last;
-    readonly HashSet<int> buttons=new HashSet<int>(), keys=new HashSet<int>();
+    readonly HashSet<int> buttons=new HashSet<int>();
+    readonly HashSet<string> keys=new HashSet<string>();
     readonly Macro macro; readonly IntPtr own; readonly Func<int,bool> isStop;
     IntPtr window;
     readonly bool scoped;
@@ -195,7 +203,8 @@ internal sealed class Recorder : IDisposable {
             if((p.Flags&16)==0 && macro.Input!="Mouse" && !(!up && isStop(vk)) &&
                 AcceptWindow(Native.GetForegroundWindow(),!up)) {
                 bool modifier=vk>=160&&vk<=165 || vk==91 || vk==92;
-                if(up?keys.Remove(vk):keys.Add(vk)||!modifier) Add(new Step{Kind=up?"KeyUp":"KeyDown",Code=vk,Scan=(int)p.Scan,Extended=(p.Flags&1)!=0});
+                var step=new Step{Kind=up?"KeyUp":"KeyDown",Code=vk,Scan=(int)p.Scan,Extended=(p.Flags&1)!=0};
+                if(up?keys.Remove(step.KeySlot):keys.Add(step.KeySlot)||!modifier)Add(step);
             }
         } catch {}
         return Native.CallNextHookEx(kh,n,w,l);
@@ -211,7 +220,7 @@ internal sealed class Recorder : IDisposable {
         }
         var held=new Dictionary<string,Step>();
         foreach(var s in Steps) {
-            string id=(s.Kind.StartsWith("Key")?"K":"M")+s.Code;
+            string id=s.Kind.StartsWith("Key")?s.KeySlot:"M"+s.Code;
             if(s.Kind=="Down" || s.Kind=="KeyDown") held[id]=s;
             if(s.Kind=="Up" || s.Kind=="KeyUp") held.Remove(id);
         }
@@ -226,7 +235,6 @@ internal sealed class Recorder : IDisposable {
 internal sealed class Player {
     readonly CancellationToken cancel;
     readonly ManualResetEventSlim gate;
-    readonly List<Macro> macros;
     readonly Action<int,int,string> progress;
     readonly Dictionary<string,Step> held=new Dictionary<string,Step>();
     internal Action<int,int> Repetition;
@@ -236,6 +244,9 @@ internal sealed class Player {
     internal int[] FailurePath {get;private set;}
     internal string FailureDetail {get;private set;}
     internal Action BeforeInput;
+    internal Action<Step,int,int,string> BeforeStep;
+    internal readonly Dictionary<string,List<Dictionary<string,string>>> CsvRows=new Dictionary<string,List<Dictionary<string,string>>>(StringComparer.OrdinalIgnoreCase);
+    internal void SetPaused(bool paused) {if(paused)gate.Reset();else gate.Set();}
     long lastWheel = -1;
     readonly Stopwatch clock = Stopwatch.StartNew();
     string lastMacro;
@@ -244,7 +255,7 @@ internal sealed class Player {
     readonly Func<bool> randomEnabled;
     readonly int[] randomRange;
     internal Player(List<Macro> list,CancellationToken token,ManualResetEventSlim pause,Action<int,int,string> update,IntPtr ownWindow=default(IntPtr),Func<bool> randomSwitch=null,int[] range=null) {
-        macros=list;cancel=token;gate=pause;progress=update;own=ownWindow;
+        cancel=token;gate=pause;progress=update;own=ownWindow;
         randomEnabled=randomSwitch;
         randomRange=range;
     }
@@ -271,7 +282,8 @@ internal sealed class Player {
             cancel.ThrowIfCancellationRequested();
             if(!gate.IsSet) {
                 var previous=held.ToArray();var focus=Native.GetForegroundWindow();
-                Release();gate.Wait(cancel);
+                Release();
+                gate.Wait(cancel);
                 if(previous.Length>0 && Native.GetForegroundWindow()!=focus)
                     throw new InvalidOperationException("이어서 실행하기 전에 대상 창을 활성화하세요.");
                 foreach(var item in previous) {
@@ -295,43 +307,55 @@ internal sealed class Player {
         return h;
     }
     static void CheckPoint(Macro m,IntPtr h,int x,int y) {
-        if(!String.IsNullOrWhiteSpace(m.Process) || m.WindowCoords) {
+        if(!m.FollowFocus || !String.IsNullOrWhiteSpace(m.Process) || m.WindowCoords) {
             var over=Native.GetAncestor(Native.WindowFromPoint(new Native.Point{X=x,Y=y}),2);
             if(over!=h) throw new InvalidOperationException("지정된 위치가 대상 창에 가려져 있거나 창 밖에 있습니다.");
         }
     }
-    internal static Rectangle Region(Macro m,IntPtr h,Step step) {
-        var bounds=String.IsNullOrWhiteSpace(m.Process)&&!m.WindowCoords?Native.Screen:Rectangle.Intersect(Native.Client(h),Native.Screen);
-        if(step.SearchWidth<=0||step.SearchHeight<=0)return bounds;
-        var origin=m.WindowCoords?Native.Client(h).Location:new Point();
-        var limit=new Rectangle(origin.X+step.SearchLeft,origin.Y+step.SearchTop,step.SearchWidth,step.SearchHeight);
-        var area=Rectangle.Intersect(bounds,limit);
-        if(area.Width<=0||area.Height<=0)throw new InvalidOperationException("검색 범위가 대상 화면 밖에 있습니다.");
-        return area;
+    internal static IEnumerable<Tuple<Dictionary<string,string>,int,bool>> Visits(Macro macro,List<Dictionary<string,string>> rows,bool selection) {
+        if(selection) {
+            if(rows.Count>0)yield return Tuple.Create(rows[0],0,true);
+            yield break;
+        }
+        if(rows.Count==0)yield break;
+        bool whole=rows.Count>1&&(macro.CsvWholeCycle||macro.Repeats==0);
+        if(whole) {
+            for(int pass=0;macro.Repeats==0||pass<macro.Repeats;pass++)
+                for(int i=0;i<rows.Count;i++)
+                    yield return Tuple.Create(rows[i],i>0?macro.CsvRowInterval:pass>0?macro.Interval:0,i==0);
+        } else {
+            for(int i=0;i<rows.Count;i++)
+                for(int pass=0;macro.Repeats==0||pass<macro.Repeats;pass++)
+                    yield return Tuple.Create(rows[i],pass>0?macro.Interval:i>0?macro.CsvRowInterval:0,true);
+        }
     }
-    void Execute(Macro m,int start,int end,int depth,Dictionary<string,string> inherited) {
-        if(depth>8) throw new InvalidOperationException("매크로 연결이 순환하거나 너무 깊습니다.");
-        if(m.Steps.Count==0) return;
-        var rows=String.IsNullOrWhiteSpace(m.Csv)?new List<Dictionary<string,string>>{inherited}:Storage.ReadCsv(m.Csv);
-        if(start>=0)rows=rows.Take(1).ToList();
+    IntPtr Execute(Macro m,int start,int end,int depth,Dictionary<string,string> inherited) {
+        if(depth>8) throw new InvalidOperationException("동작 묶음이 너무 깊습니다.");
+        if(m.Steps.Count==0)return IntPtr.Zero;
+        List<Dictionary<string,string>> rows;
+        if(String.IsNullOrWhiteSpace(m.Csv))rows=new List<Dictionary<string,string>>{inherited};
+        else if(!CsvRows.TryGetValue(m.Csv,out rows))rows=Storage.ReadCsv(m.Csv);
         int lower=Math.Max(0,start),upper=end<0?m.Steps.Count-1:Math.Min(end,m.Steps.Count-1);
-        var images=new Dictionary<string,Bitmap>();
-        var initialMacro=m;
-        var initialTarget=(!m.FollowFocus || m.WindowCoords || !String.IsNullOrWhiteSpace(m.Process))?Target(m,IntPtr.Zero):IntPtr.Zero;
-        var expected=initialTarget;
-        try {
-        foreach(var row in rows) for(int rep=0;start>=0?rep<1:(m.Repeats==0||rep<m.Repeats);rep++) {
-            m=initialMacro;expected=initialTarget;
-            if(depth==0) cycle++;
+        var expected=(!m.FollowFocus||m.WindowCoords||!String.IsNullOrWhiteSpace(m.Process))
+            ?Target(m,IntPtr.Zero):IntPtr.Zero;
+        foreach(var visit in Visits(m,rows,start>=0)) {
+            Wait(visit.Item2);
+            var row=visit.Item1;
+            if(depth==0&&visit.Item3)cycle++;
             int operations=0;
-            for(int i=lower;i<=upper;) {
-                Wait(0);var s=m.Steps[i];int next=i+1;
-                if(s.Skip) {i=next;continue;}
-                bool found=true,ignoreBranch=false;
-                for(int repetition=0;repetition<s.EffectiveRepeats&&found;repetition++) {
+            for(int i=lower;i<=upper;i++) {
+                Wait(0);var s=m.Steps[i];
+                if(s.Skip)continue;
+                if(s.Removed)throw new InvalidOperationException("제거된 동작입니다. 이 줄을 삭제하고 다시 실행하세요.");
+                if(BeforeStep!=null){BeforeStep(s,i+1,cycle,m.Name);Wait(0);}
+                for(int repetition=0;repetition<s.EffectiveRepeats;repetition++) {
                     Wait(0);
-                    if(++operations>Math.Max(1000000,m.Steps.Count*2)) throw new InvalidOperationException("분기·반복 횟수 한도를 넘었습니다.");
                     lastStep=i+1;lastMacro=m.Name;
+                    if(operations==ExecutionLimit(m.Steps.Count)) {
+                        FailurePath=actionPath.Concat(new[]{i}).ToArray();
+                        throw new InvalidOperationException("반복 횟수 한도를 넘었습니다. 실행한 동작: "+operations.ToString("N0"));
+                    }
+                    operations++;
                     FailurePath=actionPath.Concat(new[]{i}).ToArray();
                     string location=(i+1)+"번 "+s.Label+" ("+(repetition+1)+"/"+s.EffectiveRepeats+"회)";
                     FailureDetail="전체 "+cycle+"회차 · "+String.Join(" → ",callPath.Concat(new[]{location}));
@@ -346,18 +370,8 @@ internal sealed class Player {
                     }
                     Wait(DelayMs(s.Delay,m.Speed,variation));
                     if(BeforeInput!=null)BeforeInput();
-                    var h=s.Kind=="WaitWindow"?IntPtr.Zero:Target(m,expected);
-                    if(s.Kind=="WaitWindow") {
-                        if(String.IsNullOrWhiteSpace(value))throw new InvalidOperationException("기다릴 앱 이름을 입력하세요.");
-                        if(held.Count>0)throw new InvalidOperationException("누르고 있는 키나 버튼을 뗀 다음 창을 기다리세요.");
-                        found=Until(s,()=>{
-                            var foreground=Native.GetForegroundWindow();
-                            if(foreground==IntPtr.Zero||foreground==own||!String.Equals(Native.App(foreground),value,StringComparison.OrdinalIgnoreCase))return false;
-                            expected=foreground;m=new Macro{Name=m.Name,Id=m.Id,Process=value,WindowCoords=m.WindowCoords,
-                                Steps=m.Steps,Repeats=m.Repeats,Interval=m.Interval,Speed=m.Speed,Input=m.Input,FollowFocus=m.FollowFocus};
-                            return true;
-                        });
-                    } else if(s.Kind=="Group") {
+                    var h=Target(m,expected);
+                    if(s.Kind=="Group") {
                         if(held.Count>0)throw new InvalidOperationException("키나 마우스를 누른 상태에서는 묶음 반복을 시작할 수 없습니다.");
                         var child=new Macro{Name=m.Name+" / 묶음",Steps=s.Children,Repeats=1,Input=m.Input,Speed=m.Speed,Process=m.Process,WindowCoords=m.WindowCoords,FollowFocus=m.FollowFocus};
                         actionPath.Add(i);callPath.Add(location);
@@ -367,54 +381,12 @@ internal sealed class Player {
                         if(m.Input!="Mouse") TapKeys(s);
                     } else if(s.Kind=="KeyDown" || s.Kind=="KeyUp") {
                         if(m.Input!="Mouse") {
-                            bool up=s.Kind=="KeyUp";string id="K"+s.Code;
+                            bool up=s.Kind=="KeyUp";string id=s.KeySlot;
                             if(!up) {Native.Key(s,false);held[id]=s;}
                             else if(held.ContainsKey(id)) {Native.Key(s,true);held.Remove(id);}
                         }
                     } else if(s.Kind=="Text") {
                         if(m.Input!="Mouse") foreach(char c in value) {Wait(0);Target(m,expected);Native.Char(c);}
-                    } else if(s.Kind=="Macro") {
-                        var child=macros.FirstOrDefault(a=>a.Id==value||a.Name==value);
-                        if(child==null) throw new InvalidOperationException("연결된 매크로를 찾을 수 없습니다: "+value);
-                        if(held.Count>0) throw new InvalidOperationException("마우스나 키를 뗀 다음 다른 매크로를 연결하세요.");
-                        actionPath.Add(i);callPath.Add(location);
-                        try {Execute(child,-1,-1,depth+1,row);}
-                        finally {actionPath.RemoveAt(actionPath.Count-1);callPath.RemoveAt(callPath.Count-1);}
-                    } else if(s.Kind=="Jump") {
-                        if(s.Then<=0) throw new InvalidOperationException("이동할 단계 번호를 입력하세요.");
-                    } else if(s.Kind=="Element" || s.Kind=="ElementText") {
-                        found=Until(s,delegate {
-                            var active=Target(m,expected);var root=AutomationElement.FromHandle(active);
-                            var condition=new OrCondition(new PropertyCondition(AutomationElement.NameProperty,value.Split('|')[0]),new PropertyCondition(AutomationElement.AutomationIdProperty,value.Split('|')[0]));
-                            var el=root.FindFirst(TreeScope.Descendants,condition);if(el==null)return false;
-                            object pattern;
-                            if(s.Kind=="ElementText" && el.TryGetCurrentPattern(ValuePattern.Pattern,out pattern)) {
-                                int bar=value.IndexOf('|');if(bar<0)throw new InvalidOperationException("요소 이름|입력할 문장 형식이 필요합니다.");
-                                ((ValuePattern)pattern).SetValue(value.Substring(bar+1));return true;
-                            }
-                            if(s.Kind=="Element" && el.TryGetCurrentPattern(InvokePattern.Pattern,out pattern)) {((InvokePattern)pattern).Invoke();return true;}
-                            throw new InvalidOperationException("대상 요소에서 이 동작을 지원하지 않습니다.");
-                        });
-                    } else if(s.Kind=="Image" || s.Kind=="Pixel" || s.Kind=="OCR") {
-                        found=Until(s,delegate {
-                            var active=Target(m,expected);var area=Region(m,active,s);int x=s.X,y=s.Y;
-                            if(m.WindowCoords) {var client=Native.Client(active);x+=client.X;y+=client.Y;}
-                            if(s.Kind=="Pixel") return Vision.Pixel(area,x,y,value,s.Code);
-                            if(s.Kind=="OCR") return Vision.HasText(area,value,cancel);
-                            Bitmap template;
-                            if(!images.TryGetValue(value,out template)) {using(var raw=new Bitmap(value)) template=new Bitmap(raw);images[value]=template;}
-                            if(s.X==1 && m.Input!="Keyboard") {
-                                var candidates=new List<Point>();
-                                if(!Vision.FindCandidates(area,template,s.Code,cancel,candidates,2))return false;
-                                if(candidates.Count!=1)throw new InvalidOperationException("같은 그림이 여러 곳에 있습니다. 검색 범위를 좁혀주세요.");
-                                var p=candidates[0];
-                                Target(m,expected);CheckPoint(m,active,p.X,p.Y);Native.Move(p.X,p.Y);Click();
-                            } else {
-                                Point point;
-                                if(!Vision.Match(area,template,s.Code,cancel,out point))return false;
-                            }
-                            return true;
-                        });
                     } else if(s.Kind!="Wait" && m.Input!="Keyboard") {
                         int x=s.X,y=s.Y;
                         if(s.CurrentPointer) {
@@ -423,12 +395,16 @@ internal sealed class Player {
                             x=point.X;y=point.Y;
                         } else if(m.WindowCoords) {var r=Native.Client(h);x+=r.X;y+=r.Y;}
                         if(s.Kind!="Move") CheckPoint(m,h,x,y);
-                        if(s.Kind=="Up" && !held.ContainsKey("M"+s.Code)) {ignoreBranch=true;break;}
+                        if(s.Kind=="Up" && !held.ContainsKey("M"+s.Code))break;
                         if(!s.CurrentPointer)Native.Move(x,y);
+                        if(s.Kind=="Click"||s.Kind=="MouseTap"||s.Kind=="Down")CheckPoint(m,Target(m,expected),x,y);
                         if(s.Kind=="Click") Click();
                         if(s.Kind=="MouseTap") {
                             Click(s.Code);
-                            if(s.DoubleClick) {Wait(70);Target(m,expected);CheckPoint(m,h,x,y);Native.Move(x,y);Click(s.Code);}
+                            if(s.DoubleClick) {
+                                Wait(70);CheckPoint(m,Target(m,expected),x,y);
+                                Native.Move(x,y);CheckPoint(m,Target(m,expected),x,y);Click(s.Code);
+                            }
                         }
                         if(s.Kind=="Down" || s.Kind=="Up") {
                             bool up=s.Kind=="Up";Native.Mouse(Native.MouseFlag(s.Code,up),Native.MouseData(s.Code),0,0);
@@ -442,30 +418,22 @@ internal sealed class Player {
                         }
                     }
                 }
-                if(ignoreBranch) {i=next;continue;}
-                int jump=found?s.Then:s.Else;
-                if(jump>0) {
-                    if(jump-1<lower || jump-1>upper) throw new InvalidOperationException("분기 대상 단계가 현재 실행 범위 밖에 있습니다.");
-                    next=jump-1;
-                } else if(!found) throw new InvalidOperationException(s.Label+" 제한 시간이 지났습니다: "+s.Value);
-                i=next;
             }
             Release();
-            if(start<0 && (m.Repeats==0||rep+1<m.Repeats)) Wait(m.Interval);
         }
-        } finally {foreach(var img in images.Values) img.Dispose();}
+        return expected;
     }
     void TapKeys(Step s) {
         var keys=(s.Modifiers??new int[0]).Select(code=>new Step{Kind="KeyDown",Code=code,Extended=InputPicker.Extended(code)}).ToList();
         var main=s.Copy();main.Kind="KeyDown";keys.Add(main);
         var pressed=new List<Step>();
         foreach(var key in keys) {
-            if(held.ContainsKey("K"+key.Code))continue;
-            Native.Key(key,false);held["K"+key.Code]=key;pressed.Add(key);
+            if(held.ContainsKey(key.KeySlot))continue;
+            Native.Key(key,false);held[key.KeySlot]=key;pressed.Add(key);
         }
         Wait(s.HoldMs);
         foreach(var key in pressed.AsEnumerable().Reverse()) {
-            Native.Key(key,true);held.Remove("K"+key.Code);
+            Native.Key(key,true);held.Remove(key.KeySlot);
         }
     }
     void Click(int code=1) {
@@ -474,11 +442,7 @@ internal sealed class Player {
         var s=new Step{Kind="Down",Code=code};Native.Mouse(Native.MouseFlag(code,false),Native.MouseData(code),0,0);held[id]=s;
         Native.Mouse(Native.MouseFlag(code,true),Native.MouseData(code),0,0);held.Remove(id);
     }
-    bool Until(Step s,Func<bool> check) {
-        var timer=Stopwatch.StartNew();
-        do {Wait(0);if(check())return true;if(timer.ElapsedMilliseconds>=s.Timeout)break;Wait(150);}while(true);
-        return false;
-    }
+    internal static int ExecutionLimit(int steps) {return Math.Max(1000000,steps*2);}
     internal static string Expand(string value,Dictionary<string,string> row) {
         value=value??"";
         if(row==null)return value;
@@ -491,3 +455,6 @@ internal sealed class Player {
     }
 }
 }
+
+
+

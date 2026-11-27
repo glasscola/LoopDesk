@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -97,7 +97,10 @@ internal sealed class InputPicker : UserControl {
         inputContext.Text=target;inputContext.ToolTip=target;
         neighbors.Text=adjacent;neighbors.ToolTip=adjacent;
     }
-    internal InputPicker(Window host,Step original,Action<Window,Action<Native.Point,IntPtr>> picker,Action<Step> onApply,Action onDismiss) {
+    readonly bool favoriteKey;
+    internal bool IsFavoriteKey {get{return favoriteKey;}}
+    internal InputPicker(Window host,Step original,Action<Window,Action<Native.Point,IntPtr>> picker,Action<Step> onApply,Action onDismiss,bool favoriteKey=false) {
+        this.favoriteKey=favoriteKey;
         owner=host;pickPoint=picker;apply=onApply;dismiss=onDismiss;editing=original!=null;originalStep=original;
         FontFamily=host.FontFamily;FontSize=13;Background=Brushes.White;Focusable=true;
         var body=new Grid();
@@ -142,10 +145,11 @@ internal sealed class InputPicker : UserControl {
         mouseView=CreateMouse();DockPanel.SetDock(mouseView,Dock.Right);devices.Children.Add(mouseView);
         keyboardScroller=new ScrollViewer{Content=keyboardView,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled};
         devices.Children.Add(keyboardScroller);
+        if(favoriteKey)mouseView.Visibility=Visibility.Collapsed;
         var options=new StackPanel();
         var actions=new DockPanel();
         Grid.SetColumn(actions,1);area.Children.Add(actions);
-        var commit=new Button{Content=editing?"입력 변경 적용":"목록에 추가",Background=Teal,Foreground=Brushes.White,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,6,0,0)};
+        var commit=new Button{Content=favoriteKey?"내 키 저장":editing?"입력 변경 적용":"목록에 추가",Background=Teal,Foreground=Brushes.White,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,6,0,0)};
         DockPanel.SetDock(commit,Dock.Bottom);actions.Children.Add(commit);
         commit.Click+=(a,e)=>Commit();
         optionScroller=new ScrollViewer{Content=options,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
@@ -215,7 +219,7 @@ internal sealed class InputPicker : UserControl {
         optionColumn.Width=new GridLength(compact?176:232);
         deviceRow.Height=compact?new GridLength(1,GridUnitType.Star):GridLength.Auto;
         optionScroller.VerticalScrollBarVisibility=compact?ScrollBarVisibility.Auto:ScrollBarVisibility.Disabled;
-        deviceSwitch.Visibility=compact?Visibility.Visible:Visibility.Collapsed;
+        deviceSwitch.Visibility=compact&&!favoriteKey?Visibility.Visible:Visibility.Collapsed;
         deviceHint.Visibility=compact?Visibility.Collapsed:Visibility.Visible;
         DockPanel.SetDock(mouseView,compact?Dock.Left:Dock.Right);
         keyboardView.Width=compact?580:double.NaN;
@@ -225,7 +229,7 @@ internal sealed class InputPicker : UserControl {
     }
     void ShowDevice(bool mouse) {
         keyboardScroller.Visibility=!compactLayout||!mouse?Visibility.Visible:Visibility.Collapsed;
-        mouseView.Visibility=!compactLayout||mouse?Visibility.Visible:Visibility.Collapsed;
+        mouseView.Visibility=!favoriteKey&&(!compactLayout||mouse)?Visibility.Visible:Visibility.Collapsed;
     }
     internal void Detach() {if(keySource!=null)keySource.Detach();}
     internal void CheckPick(int code,int count,int wait) {
@@ -348,10 +352,11 @@ internal sealed class InputPicker : UserControl {
             if(!decimal.TryParse(delay.Text,NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out wait)||wait<0||wait>86400)
                 throw new InvalidOperationException("대기 시간을 0~86400초 사이로 입력하세요.");
             Result.RepeatCount=count;Result.Delay=(int)Math.Round(wait*1000);
-            if(originalStep!=null){Result.Skip=originalStep.Skip;Result.Then=originalStep.Then;Result.Else=originalStep.Else;}
+            if(originalStep!=null){Result.Skip=originalStep.Skip;Result.Breakpoint=originalStep.Breakpoint;Result.Then=originalStep.Then;Result.Else=originalStep.Else;}
             apply(Result);
-            if(editing)dismiss();else {summary.Text="추가됨 · "+new Row{Step=Result}.Summary+" · "+count+"회";Focus();}
+            if(editing||favoriteKey)dismiss();else {summary.Text="추가됨 · "+new Row{Step=Result}.Summary+" · "+count+"회";Focus();}
         } catch(Exception e) {summary.Text=e.Message;}
     }
 }
 }
+

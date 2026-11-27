@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -22,15 +22,6 @@ internal sealed partial class Desk {
     bool pointWasCapturing,pointMainWasVisible,pointUseTarget;
     int[] globalRandomRange;
 
-    void ShowAddMenu() {
-        var menu=new ContextMenu{PlacementTarget=F<Button>("AddStep"),Placement=PlacementMode.Bottom,FontFamily=FontFamily,FontSize=FontSize};
-        
-        foreach(var kind in new[]{"Text","Move","Wait"})AddMenuItem(menu,new Step{Kind=kind}.Label,()=>InsertStep(new Step{Kind=kind,Delay=kind=="Wait"?500:0}));
-        var advanced=new MenuItem{Header="고급 기능"};menu.Items.Add(advanced);
-        foreach(var kind in new[]{"Click","Image","Pixel","OCR","Element","ElementText","Macro","Jump","WaitWindow"})
-            AddMenuItem(advanced,new Step{Kind=kind}.Label,()=>InsertStep(new Step{Kind=kind}));
-        menu.IsOpen=true;
-    }
     void AddMenuItem(ItemsControl menu,string name,Action action) {
         var item=new MenuItem{Header=name};item.Click+=(s,e)=>Safe(action);menu.Items.Add(item);
     }
@@ -88,20 +79,28 @@ internal sealed partial class Desk {
     void PickPoint(Window host,Action<Native.Point,IntPtr> apply,bool useTarget) {
         if(Busy||pointChoice!=null)return;
         pointWasCapturing=capturing;capturing=true;Unregister();
-        if(!Native.RegisterHotKey(hwnd,80,0x4000,121)||!Native.RegisterHotKey(hwnd,81,0x4000,27)) {
+        string acceptKey=RegisterPointKey(80,121,"F10",119,"Ctrl+Alt+F8");
+        string cancelKey=RegisterPointKey(81,27,"Esc",118,"Ctrl+Alt+F7");
+        if(acceptKey==null||cancelKey==null) {
             Native.UnregisterHotKey(hwnd,80);Native.UnregisterHotKey(hwnd,81);
             capturing=pointWasCapturing;if(!capturing)Register();
-            MessageBox.Show(host,"F10 또는 Esc를 다른 프로그램이 사용 중입니다.","위치 지정");return;
+            if(host==this)Note("위치 지정 단축키를 다른 프로그램이 사용 중입니다.",true);
+            else MessageBox.Show(host,"위치 지정 단축키를 다른 프로그램이 사용 중입니다.","위치 지정");
+            return;
         }
         pointChoice=apply;pointUseTarget=useTarget;pointHost=host;pointHostState=host.WindowState;pointMainWasVisible=IsVisible;
         host.WindowState=WindowState.Minimized;
         if(host!=this)WindowState=WindowState.Minimized;
         var border=new Border{Background=new SolidColorBrush(Color.FromRgb(20,37,56)),Padding=new Thickness(16,10,16,10),
-            Child=new TextBlock{Text="원하는 위치에서 F10  ·  Esc 취소",Foreground=Brushes.White,FontSize=15}};
+            Child=new TextBlock{Text="원하는 위치에서 "+acceptKey+"  ·  "+cancelKey+" 취소",Foreground=Brushes.White,FontSize=15}};
         var area=SystemParameters.WorkArea;
         pointHint=new Window{Content=border,SizeToContent=SizeToContent.WidthAndHeight,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,
             ShowActivated=false,ShowInTaskbar=false,Topmost=true,Left=area.Left+18,Top=area.Top+18,IsHitTestVisible=false};
         pointHint.Show();
+    }
+    string RegisterPointKey(int id,uint primary,string primaryName,uint alternate,string alternateName) {
+        if(Native.RegisterHotKey(hwnd,id,0x4000,primary))return primaryName;
+        return Native.RegisterHotKey(hwnd,id,0x4003,alternate)?alternateName:null;
     }
     void FinishPoint(bool accept) {
         var apply=pointChoice;var host=pointHost;
@@ -137,52 +136,12 @@ internal sealed partial class Desk {
     static FrameworkElement PointPreview(Native.Point point) {
         var area=System.Drawing.Rectangle.Intersect(Native.Screen,new System.Drawing.Rectangle(point.X-60,point.Y-32,121,65));
         if(!area.Contains(point.X,point.Y))return null;
-        using(var bitmap=Vision.Capture(area)) {
+        using(var bitmap=ScreenCapture.Capture(area)) {
             var preview=new Canvas{Width=area.Width,Height=area.Height,Margin=new Thickness(0,5,0,3),HorizontalAlignment=HorizontalAlignment.Left};
             preview.Children.Add(new Image{Source=BitmapImage(bitmap),Width=area.Width,Height=area.Height,Stretch=Stretch.Fill});
             var mark=new Ellipse{Width=15,Height=15,Stroke=Brushes.Turquoise,StrokeThickness=2};
             Canvas.SetLeft(mark,point.X-area.X-7);Canvas.SetTop(mark,point.Y-area.Y-7);preview.Children.Add(mark);
             return preview;
-        }
-    }
-    string CaptureTemplate(Native.Point point) {
-        var area=System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(point.X,point.Y)).Bounds;
-        using(var bitmap=Vision.Capture(area)) {
-            var work=SystemParameters.WorkArea;
-            double scale=Math.Min(1,Math.Min((work.Width-60)/area.Width,(work.Height-120)/area.Height));
-            var canvas=new Canvas{Width=area.Width*scale,Height=area.Height*scale,ClipToBounds=true};
-            canvas.Children.Add(new Image{Source=BitmapImage(bitmap),Width=canvas.Width,Height=canvas.Height,Stretch=Stretch.Fill});
-            var outline=new Rectangle{Stroke=Brushes.Turquoise,StrokeThickness=2,Fill=new SolidColorBrush(Color.FromArgb(50,0,180,160)),
-                IsHitTestVisible=false,Visibility=Visibility.Collapsed};
-            canvas.Children.Add(outline);
-            var panel=new StackPanel();
-            panel.Children.Add(new TextBlock{Text="찾을 버튼 영역을 드래그하세요 · Esc 취소",Margin=new Thickness(10),FontSize=15});
-            panel.Children.Add(canvas);
-            var dialog=new Window{Title="버튼 그림 캡처",Content=panel,SizeToContent=SizeToContent.WidthAndHeight,ResizeMode=ResizeMode.NoResize,
-                WindowStartupLocation=WindowStartupLocation.CenterScreen,Topmost=true,ShowInTaskbar=false};
-            Point? start=null;string path=null;
-            dialog.PreviewKeyDown+=(a,b)=>{if(b.Key==Key.Escape)dialog.Close();};
-            canvas.MouseLeftButtonDown+=(a,b)=>{start=b.GetPosition(canvas);canvas.CaptureMouse();};
-            canvas.MouseMove+=(a,b)=>{
-                if(!start.HasValue)return;
-                var rect=new Rect(start.Value,b.GetPosition(canvas));outline.Visibility=Visibility.Visible;
-                Canvas.SetLeft(outline,rect.Left);Canvas.SetTop(outline,rect.Top);outline.Width=rect.Width;outline.Height=rect.Height;
-            };
-            canvas.MouseLeftButtonUp+=(a,b)=>{
-                if(!start.HasValue)return;
-                var rect=new Rect(start.Value,b.GetPosition(canvas));start=null;canvas.ReleaseMouseCapture();
-                var pixels=System.Drawing.Rectangle.Intersect(new System.Drawing.Rectangle(0,0,area.Width,area.Height),
-                    new System.Drawing.Rectangle((int)(rect.X/scale),(int)(rect.Y/scale),(int)(rect.Width/scale),(int)(rect.Height/scale)));
-                if(pixels.Width<3||pixels.Height<3){outline.Visibility=Visibility.Collapsed;return;}
-                try {
-                    string folder=Path.Combine(Storage.Home,"templates");Directory.CreateDirectory(folder);
-                    var file=Path.Combine(folder,Guid.NewGuid().ToString("N")+".png");
-                    using(var cropped=bitmap.Clone(pixels,System.Drawing.Imaging.PixelFormat.Format32bppArgb))
-                        cropped.Save(file,System.Drawing.Imaging.ImageFormat.Png);
-                    path=file;dialog.DialogResult=true;
-                } catch(Exception e){MessageBox.Show(dialog,e.Message,"그림 저장 실패");}
-            };
-            dialog.ShowDialog();return path;
         }
     }
 }

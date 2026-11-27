@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -18,15 +18,6 @@ internal sealed partial class Desk {
         Func<int,string> seconds=percent=>(Player.DelayMs(delay,speed,percent)/1000m).ToString("0.###",CultureInfo.InvariantCulture)+"초";
         return "선택 동작 기준 · "+seconds(0)+"\n빠르게 "+seconds(-max)+"–"+seconds(-min)+" · 느리게 "+seconds(min)+"–"+seconds(max)+
             "\n예: "+max+"% 느리게 → "+seconds(max)+"\n키나 버튼을 누른 구간의 기존 타이밍은 유지합니다.";
-    }
-
-    void OpenLinkedFailure(Macro macro,int[] path) {
-        var step=macro.Steps[path[0]];
-        var child=profile.Macros.FirstOrDefault(m=>m.Id==step.Value||m.Name==step.Value);
-        if(child==null){Note("연결된 매크로를 열 수 없습니다.",true);return;}
-        current=child;Refresh(path[1]);ShowCompactPane("EditorPane");
-        if(path.Length>2&&child.Steps[path[1]].Kind=="Group")EditGroup(child.Steps[path[1]],path.Skip(2).ToArray());
-        if(path.Length>2&&child.Steps[path[1]].Kind=="Macro")OpenLinkedFailure(child,path.Skip(1).ToArray());
     }
 
     void EditGroup(Step group,int[] failurePath) {
@@ -67,16 +58,14 @@ internal sealed partial class Desk {
             if(lastItem==null)return;
             var item=lastItem;
             var step=(Step)item.Tag;
+            if(step.Removed){Label(fields,"제거된 동작입니다. 묶음을 풀고 이 줄을 삭제하세요.",true);return;}
             var delay=Field(fields,"실행 전 대기 (초)",(step.Delay/1000m).ToString(CultureInfo.InvariantCulture),10);
             var repeat=Field(fields,"반복 횟수",step.EffectiveRepeats.ToString(),6);
             var skip=Check(fields,"이 동작 건너뛰기",step.Skip);
-            TextBox value=null,code=null,x=null,y=null,timeout=null;
-            if(new[]{"Text","Image","Pixel","OCR","Element","ElementText","Macro","WaitWindow"}.Contains(step.Kind))
-                value=Field(fields,step.Kind=="Text"?"입력할 문장":"대상 또는 값",step.Value,4096);
-            if(new[]{"Image","Pixel","OCR","Element","ElementText","WaitWindow"}.Contains(step.Kind))
-                timeout=Field(fields,"최대 대기 (초)",(step.Timeout/1000m).ToString(CultureInfo.InvariantCulture),10);
-            if(new[]{"KeyTap","KeyDown","KeyUp","MouseTap","Down","Up","Wheel","HWheel","Image","Pixel"}.Contains(step.Kind))
-                code=Field(fields,step.Kind.StartsWith("Key")?"키 번호":"버튼·휠·오차 값",step.Code.ToString(),8);
+            TextBox value=null,code=null,x=null,y=null;
+            if(step.Kind=="Text")value=Field(fields,"입력할 문장",step.Value,4096);
+            if(new[]{"KeyTap","KeyDown","KeyUp","MouseTap","Down","Up","Wheel","HWheel"}.Contains(step.Kind))
+                code=Field(fields,step.Kind.StartsWith("Key")?"키 번호":"버튼·휠 값",step.Code.ToString(),8);
             if(HasFixedPoint(step)) {
                 x=Field(fields,"X 위치",step.X.ToString(),8);y=Field(fields,"Y 위치",step.Y.ToString(),8);
                 ActionButton(fields,"화면에서 위치 지정 · F10",()=>PickPoint(dialog,(p,h)=>{x.Text=p.X.ToString();y.Text=p.Y.ToString();}));
@@ -98,10 +87,6 @@ internal sealed partial class Desk {
                     if(saveFields==null){changing=true;item.IsSelected=false;changing=false;item.IsSelected=true;}
                 });
             }
-            if(step.Kind=="Image"||step.Kind=="Pixel"||step.Kind=="OCR")
-                ActionButton(fields,"조건만 다시 확인",()=>{
-                    try {saveFields();TrySearch(dialog,step);}catch(Exception ex){error.Text=ex.Message;}
-                });
             var caption=step.Kind=="Group"?"묶음 · ":"";
             saveFields=()=>{
                 var updated=step.Copy();
@@ -109,11 +94,10 @@ internal sealed partial class Desk {
                 if(value!=null)updated.Value=value.Text;
                 if(code!=null)updated.Code=Int(code,-32768,32767,"입력 값");
                 if(x!=null){updated.X=Int(x,-100000,100000,"X");updated.Y=Int(y,-100000,100000,"Y");}
-                if(timeout!=null)updated.Timeout=ReadDelay(timeout);
                 Storage.ValidateStep(updated);
                 if(step.Kind.StartsWith("Key")&&step.Code!=updated.Code){step.Scan=0;step.Extended=InputPicker.Extended(updated.Code);}
                 step.Delay=updated.Delay;step.RepeatCount=updated.RepeatCount;step.Skip=updated.Skip;
-                step.Value=updated.Value;step.Code=updated.Code;step.Timeout=updated.Timeout;step.X=updated.X;step.Y=updated.Y;
+                step.Value=updated.Value;step.Code=updated.Code;step.X=updated.X;step.Y=updated.Y;
                 item.Header=caption+ShortStep(step);
             };
         };
@@ -149,105 +133,5 @@ internal sealed partial class Desk {
         try {dialog.ShowDialog();} finally {capturing=previous;if(!capturing)Register();}
     }
 
-    void AddSearchTools(Panel panel,Step step) {
-        if(step.Kind!="Pixel") {
-            Label(panel,SearchCaption(step),true);
-            ActionButton(panel,"검색 범위 지정",()=>{
-                var macro=current;
-                PickPoint(this,(first,firstWindow)=>{
-                    Note("검색 범위의 반대쪽 모서리를 지정하세요.");
-                    Dispatcher.BeginInvoke(new Action(()=>PickPoint(this,(second,secondWindow)=>{
-                        if(current!=macro||macro.WindowCoords&&firstWindow!=secondWindow)
-                            throw new InvalidOperationException("두 모서리는 같은 대상 창에서 지정하세요.");
-                        CommitRegion(step,Math.Min(first.X,second.X),Math.Min(first.Y,second.Y),
-                            Math.Abs(second.X-first.X)+1,Math.Abs(second.Y-first.Y)+1);
-                    })));
-                });
-            });
-            if(step.SearchWidth>0)ActionButton(panel,"검색 범위 초기화",()=>CommitRegion(step,0,0,0,0));
-        }
-        ActionButton(panel,"클릭 없이 조건 확인",()=>Safe(()=>{
-            var row=grid.SelectedItem as Row;
-            if(row!=null&&new[]{"Image","OCR","Pixel"}.Contains(row.Step.Kind))TrySearch(this,row.Step);
-        }));
-    }
-
-    void CommitRegion(Step previous,int left,int top,int width,int height) {
-        if(!FlushDrafts())return;
-        var row=grid.SelectedItem as Row;
-        if(row==null||row.Step.Kind!=previous.Kind)return;
-        int index=row.Number-1;
-        var changed=row.Step.Copy();
-        changed.SearchLeft=left;changed.SearchTop=top;changed.SearchWidth=width;changed.SearchHeight=height;
-        Mutate(()=>current.Steps[index]=changed,index);
-    }
-
-    static string SearchCaption(Step step) {
-        return step.SearchWidth<=0?"검색 범위 · 대상 화면 전체":
-            "검색 범위 · "+step.SearchWidth+" × "+step.SearchHeight+" ("+step.SearchLeft+", "+step.SearchTop+")";
-    }
-
-    async void TrySearch(Window host,Step step) {
-        var macro=current;
-        var previous=host.WindowState;
-        var mainState=WindowState;
-        bool previousCapture=capturing;
-        capturing=true;Unregister();
-        try {
-            host.WindowState=WindowState.Minimized;
-            if(host!=this)WindowState=WindowState.Minimized;
-            ShowRunHint("조건 확인 · 검사할 창을 앞으로 가져오세요");
-            await Task.Delay(1600);
-            CloseRunHint();
-            var target=Native.GetForegroundWindow();
-            var hostHandle=new WindowInteropHelper(host).Handle;
-            if(target==IntPtr.Zero||target==hwnd||target==hostHandle||
-                !String.IsNullOrWhiteSpace(macro.Process)&&!String.Equals(macro.Process,Native.App(target),StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("지정한 대상 앱을 앞으로 가져온 뒤 다시 확인하세요.");
-            var area=Player.Region(macro,target,step);
-            var matches=new List<DrawingPoint>();
-            bool found=await Task.Run(()=>{
-                using(var cancel=new CancellationTokenSource(TimeSpan.FromSeconds(8))) {
-                    if(step.Kind=="OCR")return Vision.HasText(area,step.Value,cancel.Token);
-                    if(step.Kind=="Pixel") {
-                        var origin=macro.WindowCoords?Native.Client(target).Location:new DrawingPoint();
-                        return Vision.Pixel(area,step.X+origin.X,step.Y+origin.Y,step.Value,step.Code);
-                    }
-                    using(var image=new System.Drawing.Bitmap(step.Value))
-                        return Vision.FindCandidates(area,image,step.Code,cancel.Token,matches);
-                }
-            });
-            if(matches.Count>0)await ShowMatchPoints(host,matches);
-            host.WindowState=previous;if(host!=this)WindowState=mainState;
-            host.Activate();
-            MessageBox.Show(host,matches.Count>1?(matches.Count>=20?"20곳 이상":matches.Count+"곳")+" 발견 · 범위를 좁혀 한 곳으로 맞추세요.":
-                found?"조건을 확인했습니다.":"대상 화면에서 조건과 일치하는 곳을 찾지 못했습니다.","조건 확인");
-        } catch(Exception error) {
-            host.WindowState=previous;if(host!=this)WindowState=mainState;
-            host.Activate();
-            MessageBox.Show(host,error.Message,"조건 확인");
-        } finally {CloseRunHint();capturing=previousCapture;if(!capturing)Register();}
-    }
-
-    async Task ShowMatchPoints(Window host,List<DrawingPoint> points) {
-        var marks=new List<Window>();
-        try {
-            var transform=PresentationSource.FromVisual(host).CompositionTarget.TransformFromDevice;
-            for(int i=0;i<points.Count;i++) {
-                var point=transform.Transform(new Point(points[i].X,points[i].Y));
-                var marker=new Window {WindowStyle=WindowStyle.None,SizeToContent=SizeToContent.Manual,Width=34,Height=34,
-                    WindowStartupLocation=WindowStartupLocation.Manual,Left=point.X-17,Top=point.Y-17,Topmost=true,
-                    ShowActivated=false,ShowInTaskbar=false,Background=Brushes.Teal,
-                    Content=new TextBlock{Text=(i+1).ToString(),Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center,
-                        VerticalAlignment=VerticalAlignment.Center}};
-                marker.SourceInitialized+=(sender,args)=>{
-                    var handle=new WindowInteropHelper(marker).Handle;
-                    Native.SetWindowLong(handle,-20,Native.GetWindowLong(handle,-20)|0x08000000|0x20);
-                };
-                marks.Add(marker);marker.Show();
-            }
-            await Task.Delay(1600);
-        } finally {foreach(var mark in marks)mark.Close();}
-    }
 }
 }

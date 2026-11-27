@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -52,14 +52,6 @@ internal static class SelfCheck {
             throw new Exception("Shortcut or random delay settings were not persisted.");
         File.WriteAllText(csv,"이름,비고\r\n민수,\"쉼표, 포함\"\r\n");
         if(Storage.ReadCsv(csv)[0]["비고"]!="쉼표, 포함")throw new Exception("CSV quote handling failed.");
-        using(var screen=new Bitmap(55,35))
-        using(var template=new Bitmap(5,7)) {
-            using(var g=Graphics.FromImage(template))g.Clear(Color.Turquoise);
-            using(var g=Graphics.FromImage(screen)){g.Clear(Color.Black);g.DrawImageUnscaled(template,20,14);}
-            Point point;
-            if(!Vision.MatchBitmap(screen,template,0,CancellationToken.None,Point.Empty,out point) || point!=new Point(22,17))
-                throw new Exception("Image match failed.");
-        }
         using(var token=new CancellationTokenSource())
         using(var gate=new ManualResetEventSlim(true)) {
             var wait=new Macro{Repeats=0,Steps=new List<Step>{new Step{Kind="Wait",Delay=5000}}};
@@ -81,15 +73,8 @@ internal static class SelfCheck {
             if(!playback.Wait(2000) || visited.Count!=2 || visited[0]!=1 || visited[1]!=2)
                 throw new Exception("Playback did not resume from the paused step.");
         }
-        string vision;
-        using(var sample=new Bitmap(600,120))
-        using(var font=new Font("Arial",42,FontStyle.Bold))
-        using(var g=Graphics.FromImage(sample)) {
-            g.Clear(Color.White);g.DrawString("LOOP DESK",font,Brushes.Black,10,10);
-            try {vision=Vision.HasTextBitmap(sample,"LOOP DESK",CancellationToken.None)?"PASS: Windows OCR.":"OCR call completed; test phrase not detected.";}
-            catch(Exception e){vision="OCR could not be verified: "+e.Message;}
-        }
-        File.WriteAllText(path,"PASS: profile, shortcuts and previous-revision backup, random delay math, pause/resume, wait cancellation, CSV and image matching.\r\n"+vision);
+        V6Checks.Run();
+        File.WriteAllText(path,"PASS: profile, shortcuts, backup, random timing, pause and cancellation, CSV, and removed-action preflight.\r\n");
     }
     internal static void Desktop(string path) {
         var text=new TextBox{FontSize=22,Name="FixtureInput",Margin=new Thickness(24)};
@@ -99,7 +84,7 @@ internal static class SelfCheck {
         board.Children.Add(text);
         var w=new Window{Title="오토 매크로 · 입력 테스트",Content=board,Width=480,Height=245,Topmost=true,WindowStartupLocation=WindowStartupLocation.CenterScreen};
         var results=new List<string>();
-        var app=new Application();
+        var app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
         w.ContentRendered+=async delegate {
             try {
                 w.Activate();text.Focus();
@@ -122,15 +107,7 @@ internal static class SelfCheck {
                     if(recorder.Finish(false).Count!=0)throw new Exception("Injected input leaked into recording.");
                 }
                 text.Text="";
-                m.Steps.Add(new Step{Kind="ElementText",Value="FixtureInput|요소 입력",Timeout=1500});
                 results.Add("PASS: hotkey registration, native hooks and injected-event filtering.");
-                try {
-                    using(var c=new CancellationTokenSource(6000))
-                    using(var gate=new ManualResetEventSlim(true))
-                        await Task.Run(()=>new Player(new List<Macro>{m},c.Token,gate,delegate{}).Run(m,-1,-1));
-                    if(text.Text!="요소 입력")throw new Exception("UI automation did not update the test field.");
-                    results.Add("PASS: UI element text.");
-                } catch(Exception error) {results.Add("FAIL UI element text: "+error.Message);}
                 w.Activate();text.Focus();
                 Func<Step[],Task> play=async steps=>{
                     if(Native.GetForegroundWindow()!=h)throw new InvalidOperationException("The test window lost focus.");
@@ -163,7 +140,7 @@ internal static class SelfCheck {
                     new Step{Kind="KeyTap",Code=65,HoldMs=500}});
                 var downs=events.Where(e=>e.Item1==0x100).ToArray();var ups=events.Where(e=>e.Item1==0x101).ToArray();
                 if(downs.Length<3||ups.Length!=3||(downs[0].Item2&0x1000000)!=0||(downs[1].Item2&0x1000000)==0||
-                    ups[2].Item3-downs[2].Item3<480)throw new InvalidOperationException("Enter or hold timing differed.");
+                    ups[2].Item3-downs[2].Item3<480)throw new InvalidOperationException("Enter or hold timing differed. Key events: "+String.Join(", ",events.Select(e=>e.Item1.ToString("X")+":"+e.Item2.ToString("X")+"@"+e.Item3)));
                 results.Add("PASS 04: Enter and numpad Enter differed, and a 500 ms hold released once.");
                 events.Clear();
                 await play(new[]{
@@ -205,24 +182,6 @@ internal static class SelfCheck {
                 if(!intervals.Any(ms=>ms>=50&&ms<100)||!intervals.Any(ms=>ms>=125&&ms<210))
                     throw new InvalidOperationException("Expected both randomized delay bands.");
                 results.Add("PASS 08: randomized waits included both bands; measured "+intervals.Min()+"–"+intervals.Max()+" ms.");
-                text.Focus();
-                text.Text="";
-                await play(new[]{new Step{Kind="Pixel",X=100,Y=115,Value="#178F77",Timeout=2000},
-                    new Step{Kind="Text",Value="픽셀 성공"}});
-                expectText("픽셀 성공");
-                text.Text="";
-                await play(new[]{new Step{Kind="Pixel",X=100,Y=115,Value="#FF00FF",Timeout=200,Else=3},
-                    new Step{Kind="Text",Value="잘못된 경로"},new Step{Kind="Text",Value="시간 초과"}});
-                expectText("시간 초과");
-                string template=path+".png";
-                var target=new Rectangle(newBounds.X+90,newBounds.Y+105,20,20);
-                using(var image=Vision.Capture(target))image.Save(template);
-                text.Text="";
-                await play(new[]{new Step{Kind="Image",Value=template,Timeout=2000},
-                    new Step{Kind="Text",Value="이미지 성공"}});
-                expectText("이미지 성공");
-                results.Add("PASS 11: live pixel match, timeout fallback and live image search.");
-
                 text.Text="";
                 await new Desk(true).CheckActiveReservation(h);
                 expectText("예약 실행");
@@ -242,9 +201,10 @@ internal static class SelfCheck {
                 File.WriteAllLines(path,results);
                 if(results.Any(result=>result.StartsWith("FAIL")))Environment.ExitCode=1;
             } catch(Exception e) {File.WriteAllLines(path,results);File.WriteAllText(path+".error",e.ToString());Environment.ExitCode=1;}
-            finally {w.Close();}
+            finally {w.Close();app.Shutdown();}
         };
         app.Run(w);
     }
 }
 }
+

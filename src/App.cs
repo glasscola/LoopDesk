@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Markup;
@@ -23,7 +24,7 @@ internal sealed class Row {
     public Step Step;
     public int PathCount=1;
     public int Number {get;set;}
-    public string Action {get{return (Step.Skip?"제외 · ":"")+Step.Label;}}
+    public string Action {get{return (Step.Removed?"제거됨 · ":Step.Skip?"제외 · ":"")+Step.Label;}}
     public string Detail {get{return Step.EffectiveRepeats>1?Step.Detail+"  ×"+Step.EffectiveRepeats:Step.Detail;}}
     public string Delay {get{return (Step.Delay/1000m).ToString("0.###",CultureInfo.InvariantCulture)+"초";}}
     public string Repeat {get{return Step.EffectiveRepeats+"회";}}
@@ -37,7 +38,7 @@ internal sealed class Row {
         else if(Step.Kind=="KeyDown"||Step.Kind=="KeyUp")content=Step.Detail+(Step.Kind=="KeyDown"?" 누르기":" 떼기");
         else if(Step.Kind=="MouseTap"||Step.Kind=="Wheel"&&Step.Value=="Manual")content=Step.Detail;
         else content=Step.Label+(String.IsNullOrWhiteSpace(Step.Detail)?"":" · "+Step.Detail);
-        return (Step.Skip?"건너뜀 · ":"")+content;
+        return (Step.Breakpoint?"● ":"")+(Step.Skip?"건너뜀 · ":"")+content;
     }}
 }
 internal sealed partial class Desk : Window {
@@ -54,7 +55,8 @@ internal sealed partial class Desk : Window {
     readonly List<string> logs=new List<string>();
     IntPtr hwnd;
     Recorder recorder;
-    CancellationTokenSource run;
+    CancellationTokenSource run, pendingCheck;
+    Player activePlayer;
     ManualResetEventSlim gate;
     Macro active;
     int replaceStart=-1,replaceEnd=-1,serial;
@@ -104,7 +106,7 @@ internal sealed partial class Desk : Window {
         library.SelectionChanged+=(s,e)=>{if(!refreshing && library.SelectedItem is Macro){
             var next=(Macro)library.SelectedItem;
             if(!FlushDrafts()){refreshing=true;library.SelectedItem=current;refreshing=false;return;}
-            CloseInput();current=next;Save();Refresh();ShowCompactPane("StepsPane");
+            F<Popup>("LibraryPopup").IsOpen=false;CloseInput();current=next;Save();Refresh();ShowCompactPane("StepsPane");
         }};
         grid.SelectionChanged+=(s,e)=>{if(!refreshing) {
             var next=grid.SelectedItem as Row;
@@ -122,7 +124,7 @@ internal sealed partial class Desk : Window {
             ShowCompactPane("EditorPane");
         };
         F<TextBox>("Search").TextChanged+=(s,e)=>RefreshLibrary();
-        On("AddMacro",()=>{CloseInput();current=new Macro{Name=Unique("새 매크로")};profile.Macros.Add(current);Changed();});
+        On("AddMacro",()=>{CloseInput();current=new Macro{Name=Unique("새 매크로")};profile.Macros.Add(current);F<Popup>("LibraryPopup").IsOpen=false;F<TextBox>("Search").Clear();Changed();});
         On("Duplicate",Duplicate);
         On("DeleteMacro",()=>{
             if(MessageBox.Show(this,current.Name+" 매크로를 삭제할까요?","매크로 삭제",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return;
@@ -141,7 +143,7 @@ internal sealed partial class Desk : Window {
         On("EndRecord",()=>{if(recorder!=null)FinishRecording(false);else if(run==null)Stop(false);});
         On("Random",RandomSettings);
         On("History",ShowHistory);
-        On("AddStep",ShowAddMenu);
+        InitQuickActions();
         On("CopyStep",()=>{var rows=Selection();int index=rows.Last();var copies=rows.Select(n=>current.Steps[n-1].Copy()).ToList();Mutate(()=>current.Steps.InsertRange(index,copies),index);});
         On("DeleteStep",()=>{var selected=Selection();Mutate(()=>{foreach(int n in selected.Reverse()) current.Steps.RemoveAt(n-1);},Math.Min(selected[0]-1,current.Steps.Count-1));});
         On("MoveUp",()=>MoveRow(-1));On("MoveDown",()=>MoveRow(1));On("Undo",Undo);
@@ -161,6 +163,7 @@ internal sealed partial class Desk : Window {
             if(!closing){e.Cancel=true;Hide();Balloon("단축키 대기 중","창을 닫아도 실행 키를 사용할 수 있어요. 완전 종료는 알림 영역 메뉴에서 선택하세요.");return;}
             CloseRunHint();
             if(run!=null){e.Cancel=true;Stop(false);return;}
+            if(pendingCheck!=null)pendingCheck.Cancel();
             serial++;pending=false;
             if(recorder!=null)FinishRecording(false);
             if(scheduler!=null)scheduler.Stop();
@@ -250,8 +253,9 @@ internal sealed partial class Desk : Window {
     void Buttons() {
         var row=grid.SelectedItem as Row;
         var select=row!=null;var editable=!Busy;
-        foreach(string name in new[]{"Record","AddMacro","Duplicate","DeleteMacro","Import","Export","AddStep","Search","Library","Tabs"})
+        foreach(string name in new[]{"Record","AddMacro","Duplicate","DeleteMacro","Import","Export","OpenLibrary","Search","Library","Tabs"})
             F<Control>(name).IsEnabled=editable;
+        Panel("QuickActions").IsEnabled=editable;
         F<TabControl>("Tabs").IsEnabled=true;
         F<Button>("DirectInput").IsEnabled=editable;F<Button>("EditTools").IsEnabled=editable;F<Button>("Manage").IsEnabled=editable;
         F<Button>("Pause").Visibility=run!=null?Visibility.Visible:Visibility.Collapsed;
@@ -324,17 +328,16 @@ internal sealed partial class Desk : Window {
         var kinds=new[]{"Wait","Move","Text"}.Concat(new[]{s.Kind}).Distinct().ToArray();
         var kind=Combo(p,"동작 종류",kinds.Select(k=>new Step{Kind=k}.Label).ToArray(),Array.IndexOf(kinds,s.Kind));
         var details=new StackPanel();p.Children.Add(details);
-        TextBox x=null,y=null,code=null,value=null,timeout=null,jump=null,otherwise=null;
-        CheckBox click=null;
+        TextBox x=null,y=null,code=null,value=null;
         Action build=()=>{
-            details.Children.Clear();x=y=code=value=timeout=jump=otherwise=null;click=null;
+            details.Children.Clear();x=y=code=value=null;
             string k=kinds[kind.SelectedIndex];
-            if(new[]{"Move","Down","Up","Wheel","HWheel","Click","Pixel"}.Contains(k)) {
+            if(new[]{"Move","Down","Up","Wheel","HWheel" ,"Click"}.Contains(k)) {
                 var coordinates=new StackPanel();
                 details.Children.Add(new Expander{Header="상세 좌표",Content=coordinates,Margin=new Thickness(0,4,0,0)});
                 x=Field(coordinates,"X 위치",s.X.ToString(),8);y=Field(coordinates,"Y 위치",s.Y.ToString(),8);
                 var result=new TextBlock{Text="현재 좌표  "+s.X+", "+s.Y,TextWrapping=TextWrapping.Wrap};details.Children.Add(result);
-                ActionButton(details,k=="Pixel"?"화면에서 위치와 색 가져오기":"화면에서 위치 지정 · F10",()=>PickPoint(this,(point,window)=>{
+                ActionButton(details,"화면에서 위치 지정 · F10",()=>PickPoint(this,(point,window)=>{
                     x.Text=point.X.ToString();y.Text=point.Y.ToString();result.Text="위치 지정 완료  ·  "+point.X+", "+point.Y;
                     var screen=point;
                     if(current.WindowCoords) {var bounds=Native.Client(window);screen.X+=bounds.X;screen.Y+=bounds.Y;}
@@ -344,11 +347,6 @@ internal sealed partial class Desk : Window {
                     if(oldPreview!=null)details.Children.Remove(oldPreview);
                     if(preview!=null)details.Children.Insert(previewIndex,preview);
                     result.Tag=preview;
-                    if(k=="Pixel") {
-                        using(var bitmap=Vision.Capture(new System.Drawing.Rectangle(screen.X,screen.Y,1,1))) {
-                            var color=bitmap.GetPixel(0,0);value.Text=String.Format("#{0:X2}{1:X2}{2:X2}",color.R,color.G,color.B);
-                        }
-                    }
                 }));
             }
             if(k=="Down"||k=="Up") code=Field(details,"버튼 번호 (1 왼쪽, 2 오른쪽, 3 가운데)",(s.Code==0?1:s.Code).ToString(),3);
@@ -357,52 +355,15 @@ internal sealed partial class Desk : Window {
                 code=Field(details,"키 (입력란에서 키를 누르세요)",s.Code==0?"":KeyInterop.KeyFromVirtualKey(s.Code).ToString(),30);code.IsReadOnly=true;
                 code.PreviewKeyDown+=(a,b)=>{var key=b.Key==Key.System?b.SystemKey:b.Key;if(KeyInterop.VirtualKeyFromKey(key)>0)code.Text=key.ToString();b.Handled=true;};
             }
-            string caption=k=="Text"?"입력할 문장":k=="Image"?"찾을 이미지 파일":k=="Pixel"?"찾을 색상 (#RRGGBB)":k=="OCR"?"화면에 나타날 글자":k=="Element"?"요소 이름 또는 자동화 ID":k=="ElementText"?"요소 이름|입력할 문장":k=="Macro"?"실행할 매크로 이름":"";
-            if(caption!="") {
-                value=Field(details,caption,s.Value,4096);
-                if(k=="Text"||k=="ElementText") {value.TextWrapping=TextWrapping.Wrap;value.AcceptsReturn=true;value.MinHeight=70;}
+            if(k=="Text") {
+                value=Field(details,"입력할 문장",s.Value,4096);
+                value.TextWrapping=TextWrapping.Wrap;value.AcceptsReturn=true;value.MinHeight=70;
             }
-            if(k=="Image") {
-                ActionButton(details,"화면에서 버튼 그림 캡처",()=>PickPoint(this,(point,window)=>{
-                    if(current.WindowCoords) {var bounds=Native.Client(window);point.X+=bounds.X;point.Y+=bounds.Y;}
-                    var path=CaptureTemplate(point);if(path!=null)value.Text=path;
-                }));
-                ActionButton(details,"이미지 파일 선택",()=>{var d=new OpenFileDialog{Filter="이미지|*.png;*.jpg;*.bmp;*.jpeg"};if(d.ShowDialog(this)==true)value.Text=d.FileName;});
-                click=Check(details,"찾으면 버튼 가운데 클릭",s.Kind=="Image"&&s.X==1);
-            }
-            if(k=="WaitWindow") {
-                value=Field(details,"기다릴 앱 이름",s.Value,100);
-                ActionButton(details,"화면에서 앱 고르기 · F10",()=>PickPoint(this,(point,window)=>value.Text=Native.App(window),false));
-            }
-            if(k=="Image"||k=="Pixel")code=Field(details,"색상 오차 허용 (0~255)",(s.Kind==k?s.Code:0).ToString(),3);
-            if(new[]{"Pixel","Image","OCR","Element","ElementText","WaitWindow"}.Contains(k)) {
-                timeout=Field(details,"최대 대기 시간 (초)",(s.Timeout/1000m).ToString(CultureInfo.InvariantCulture),10);
-                jump=Field(details,"성공 시 이동할 단계 (0 = 다음)",s.Then.ToString(),6);
-                otherwise=Field(details,"실패 시 이동할 단계 (0 = 정지)",s.Else.ToString(),6);
-            }
-            if(k=="Jump")jump=Field(details,"이동할 단계 번호",Math.Max(1,s.Then).ToString(),6);
-            if(k=="Macro") {
-                var names=profile.Macros.Where(m=>m!=current).Select(m=>m.Name).ToArray();
-                if(names.Length>0) {
-                    var target=Combo(details,"저장된 매크로",names,Array.IndexOf(names,s.Value));
-                    target.SelectionChanged+=(a,b)=>value.Text=(string)target.SelectedItem;
-                }
-            }
-            if(k=="Element"||k=="ElementText") ActionButton(details,"화면에서 "+(k=="Element"?"버튼":"입력칸")+" 선택",()=>PickPoint(this,(point,window)=>{
-                if(current.WindowCoords) {var bounds=Native.Client(window);point.X+=bounds.X;point.Y+=bounds.Y;}
-                var element=System.Windows.Automation.AutomationElement.FromPoint(new Point(point.X,point.Y));
-                string name=element==null?"":element.Current.AutomationId;
-                if(element!=null&&String.IsNullOrWhiteSpace(name))name=element.Current.Name;
-                if(String.IsNullOrWhiteSpace(name)||name.Contains("|"))throw new InvalidOperationException("선택한 항목의 이름을 읽을 수 없습니다.");
-                int bar=value.Text.IndexOf('|');
-                value.Text=k=="Element"?name:name+"|"+(bar<0?"":value.Text.Substring(bar+1));
-            }));
         };
         kind.SelectionChanged+=(a,b)=>build();build();
-        if(new[]{"Image","OCR","Pixel"}.Contains(s.Kind))AddSearchTools(p,s);
         ActionButton(Panel("EditorFooter"),"변경 저장",()=>{
             string selectedKind=kinds[kind.SelectedIndex];
-            var edited=selectedKind==s.Kind?s.Copy():new Step{Kind=selectedKind,Skip=s.Skip,RandomDelay=s.RandomDelay,RandomMin=s.RandomMin,
+            var edited=selectedKind==s.Kind?s.Copy():new Step{Kind=selectedKind,Skip=s.Skip,Breakpoint=s.Breakpoint,RandomDelay=s.RandomDelay,RandomMin=s.RandomMin,
                 RandomMax=s.RandomMax,RandomDirection=s.RandomDirection,RandomWhileHeld=s.RandomWhileHeld};
             edited.Delay=ReadDelay(delay);
             edited.RepeatCount=Int(repeats,1,100000,"이 동작 반복 (회)");
@@ -417,10 +378,6 @@ internal sealed partial class Desk : Window {
                     edited.Kind=="Down"||edited.Kind=="Up"?5:edited.Kind.EndsWith("Wheel")?32767:255,"입력 값");
             }
             if(value!=null)edited.Value=value.Text;
-            if(click!=null)edited.X=click.IsChecked==true?1:0;
-            if(timeout!=null)edited.Timeout=ReadDelay(timeout);
-            if(jump!=null)edited.Then=Int(jump,edited.Kind=="Jump"?1:0,current.Steps.Count,"이동 단계");
-            if(otherwise!=null)edited.Else=Int(otherwise,0,current.Steps.Count,"실패 단계");
             Mutate(()=>current.Steps[row.Number-1]=edited,row.Number-1);Note("동작을 저장했습니다.");
         },true);
     }
@@ -467,7 +424,7 @@ internal sealed partial class Desk : Window {
     }
     void Duplicate() {
         var c=new Macro{Name=Unique(current.Name+" 복사"),Steps=current.Steps.Select(s=>s.Copy()).ToList(),Repeats=current.Repeats,Interval=current.Interval,Speed=current.Speed,
-            Input=current.Input,Paths=current.Paths,Process=current.Process,WindowCoords=current.WindowCoords,Csv=current.Csv,FollowFocus=current.FollowFocus};
+            Input=current.Input,Paths=current.Paths,Process=current.Process,WindowCoords=current.WindowCoords,Csv=current.Csv,FollowFocus=current.FollowFocus,CsvWholeCycle=current.CsvWholeCycle,CsvRowInterval=current.CsvRowInterval};
         current=c;profile.Macros.Add(c);Changed();
     }
     void Import() {
@@ -670,14 +627,21 @@ internal sealed partial class Desk : Window {
     }
     static int ShiftBranch(int number,int first,int last,int count) {if(number<=first)return number;if(number<=last+1)return first+1;return number+count-(last-first+1);}
     static bool IsContiguous(int[] selection) {return selection.Length>0 && selection.Last()-selection[0]+1==selection.Length;}
-    async void StartPlay(Macro m,bool hot,int first,int last) {
+    async void StartPlay(Macro m,bool hot,int first,int last,bool debug=false) {
         if(Busy||recordingReview||m.Steps.Count==0||!FlushDrafts())return;
         CloseInput();
         if(first>=0&&!IsContiguous(Selection())) {Note("이어진 범위의 동작을 선택하세요.",true);return;}
         Player player=null;
         int ticket=++serial;active=m;startingRecording=false;pending=true;failedStep=0;lastProgressStep=0;Buttons();
         try {
-            Storage.Validate(m);
+            var macros=profile.Macros.ToList();
+            Preflight plan;
+            using(var check=new CancellationTokenSource()) {
+                pendingCheck=check;
+                try {plan=await Task.Run(()=>Preflight.Check(m,first,last,check.Token));}
+                finally {if(pendingCheck==check)pendingCheck=null;}
+            }
+            if(ticket!=serial)return;
             if(!hot) {
                 WindowState=WindowState.Minimized;
                 for(int countdown=3;countdown>0;countdown--) {
@@ -691,21 +655,31 @@ internal sealed partial class Desk : Window {
             run=new CancellationTokenSource();gate=new ManualResetEventSlim(true);pending=false;paused=false;Buttons();
             if(globalRandomRange==null)globalRandomRange=ReadGlobalRange();
             failedStep=0;
-            player=new Player(profile.Macros.ToList(),run.Token,gate,Progress,hwnd,()=>randomOn,globalRandomRange);
+            player=new Player(macros,run.Token,gate,Progress,hwnd,()=>randomOn,globalRandomRange);
+            activePlayer=player;
+            foreach(var csv in plan.Rows)player.CsvRows.Add(csv.Key,csv.Value);
+            if(debug)ConfigureDebug(player,ticket);
             player.Repetition=(done,total)=>{stepRepetition=done;stepTotal=total;};
             AddLog("실행 시작 · "+m.Name);
             Balloon("실행 중",m.Name+" · 정지 "+profile.Emergency);
             await Task.Run(()=>player.Run(m,first,last));
             if(reservationRunning==m.Id)SetReservationResult(m,"실행 완료");
             AddLog("실행 완료 · "+m.Name);Note(m.Name+" 실행 완료");
-        } catch(OperationCanceledException) {if(reservationRunning==m.Id)SetReservationResult(m,"사용자가 정지");AddLog("사용자가 정지 · "+m.Name);Note("실행을 정지했습니다.");}
-        catch(Exception e) {if(reservationRunning==m.Id)SetReservationResult(m,"실행 실패");AddLog("실행 실패 · "+m.Name+" · "+e.Message);Note(e.Message,true);Balloon("실행 실패",e.Message);failedStep=Math.Max(1,lastProgressStep);}
+        } catch(OperationCanceledException) {if(ticket!=serial)return;if(reservationRunning==m.Id)SetReservationResult(m,"사용자가 정지");AddLog("사용자가 정지 · "+m.Name);Note("실행을 정지했습니다.");}
+        catch(PreflightException e) {
+            if(ticket!=serial)return;
+            if(reservationRunning==m.Id)SetReservationResult(m,"실행 전 검사 실패");
+            failedStep=e.StepIndex+1;
+            Note("실행 전 검사 · "+e.Message,true);Balloon("실행 전 검사 실패",e.Message);
+        }
+        catch(Exception e) {if(ticket!=serial)return;if(reservationRunning==m.Id)SetReservationResult(m,"실행 실패");AddLog("실행 실패 · "+m.Name+" · "+e.Message);Note(e.Message,true);Balloon("실행 실패",e.Message);failedStep=Math.Max(1,lastProgressStep);}
         finally {
             if(ticket==serial) {
                 CloseRunHint();
+                CloseDebug();
                 reservationRunning=null;
                 if(run!=null)run.Dispose();if(gate!=null)gate.Dispose();
-                run=null;gate=null;active=null;paused=false;pending=false;Buttons();
+                run=null;gate=null;activePlayer=null;active=null;paused=false;pending=false;Buttons();
                 if(closing)Close();else if(failedStep>0){
                     current=m;ShowDesk();
                     int[] path=player==null?null:player.FailurePath;
@@ -714,8 +688,6 @@ internal sealed partial class Desk : Window {
                         Label(Panel("EditorFooter"),player.FailureDetail,true);
                         if(path.Length>1&&m.Steps[path[0]].Kind=="Group")
                             ActionButton(Panel("EditorFooter"),"묶음 안의 실패 동작 열기",()=>EditGroup(m.Steps[path[0]],path.Skip(1).ToArray()));
-                        else if(path.Length>1&&m.Steps[path[0]].Kind=="Macro")
-                            ActionButton(Panel("EditorFooter"),"연결된 실패 동작 열기",()=>OpenLinkedFailure(m,path));
                     }
                 }
             }
@@ -740,11 +712,12 @@ internal sealed partial class Desk : Window {
     void Stop(bool fromShortcut) {
         if(recorder!=null)FinishRecording(fromShortcut);
         else if(run!=null) {run.Cancel();Note("실행을 정지하는 중입니다.");}
-        else if(pending) {CloseRunHint();serial++;pending=false;active=null;Buttons();Note("시작을 취소했습니다.");}
+        else if(pending) {if(pendingCheck!=null)pendingCheck.Cancel();CloseRunHint();serial++;pending=false;active=null;Buttons();Note("시작을 취소했습니다.");}
     }
     void TogglePause() {
         if(run==null)return;
-        paused=!paused;if(paused)gate.Reset();else gate.Set();Buttons();if(paused)ShowRunHint("Ⅱ 일시정지 · "+profile.CommonKeys[4]+" 다시 누르면 이어서 실행\n정지 "+profile.CommonKeys[1]);Note(paused?"일시정지 · 다시 누르면 계속합니다.":"이어서 실행 중");
+        if(debugWindow!=null&&paused){ResumeDebug(false);return;}
+        paused=!paused;activePlayer.SetPaused(paused);Buttons();if(paused)ShowRunHint("Ⅱ 일시정지 · "+profile.CommonKeys[4]+" 다시 누르면 이어서 실행\n정지 "+profile.CommonKeys[1]);Note(paused?"일시정지 · 다시 누르면 계속합니다.":"이어서 실행 중");
     }
     void ToggleRandom() {
         if(ReadGlobalRange()==null && !profile.Macros.Any(m=>m.Steps.Any(s=>s.RandomDelay))) {
@@ -852,7 +825,7 @@ internal sealed partial class Desk : Window {
         finally {foreach(var mark in marks)mark.Close();ShowDesk();}
     }
     void ShowHelp() {
-        MessageBox.Show(this,"1. 단축키 탭에서 공통 키와 매크로 전용 키를 바꿀 수 있습니다.\n\n2. 기본 F6으로 녹화하고 F7로 저장합니다. 현재 화면에서 F9로 실행하고, F10으로 일시정지·재개하거나 F11로 실행을 끝냅니다.\n\n3. 키·마우스 입력을 누르면 아래에 108키 키보드가 펼쳐집니다. 키와 반복 횟수를 정하고 목록에 추가하세요. 동작을 선택하면 오른쪽에서 수정할 수 있으며 자동 저장됩니다.\n\n4. 창을 닫아도 단축키는 계속 작동합니다. 관리 메뉴에서 Windows 로그인 시 자동 대기를 켤 수 있습니다. 완전히 종료하려면 작업 표시줄 알림 영역의 오토 매크로 메뉴를 사용하세요.","오토 매크로 사용법",MessageBoxButton.OK,MessageBoxImage.Information);
+        MessageBox.Show(this,"1. 단축키 탭에서 공통 키와 매크로 전용 키를 바꿀 수 있습니다.\n\n2. 기본 F6으로 녹화하고 F7로 저장합니다. 현재 화면에서 F9로 실행하고, F10으로 일시정지·재개하거나 F11로 실행을 끝냅니다.\n\n3. 왼쪽 ‘자주 쓰는 동작’에서 버튼을 누르면 매크로에 동작이 추가됩니다. ‘내 키 추가’에서 키나 조합을 저장하세요. 다른 매크로는 현재 매크로 이름을 눌러 찾을 수 있습니다.\n\n4. 창을 닫아도 단축키는 계속 작동합니다. 관리 메뉴에서 Windows 로그인 시 자동 대기를 켤 수 있습니다. 완전히 종료하려면 작업 표시줄 알림 영역의 오토 매크로 메뉴를 사용하세요.","오토 매크로 사용법",MessageBoxButton.OK,MessageBoxImage.Information);
     }
     internal async Task CheckTrayControls() {
         // The user's running copy may already own the default shortcuts.
@@ -874,6 +847,7 @@ internal sealed partial class Desk : Window {
         int stopId=hotkeys.First(k=>k.Value.Item2==1).Key;
         bool handled=false;
         HandleMessage(hwnd,0x312,(IntPtr)playId,IntPtr.Zero,ref handled);
+        for(int i=0;i<40&&pending&&run==null;i++)await Task.Delay(25);
         if(!handled || run==null || IsVisible)throw new InvalidOperationException("Hidden playback did not start.");
         HandleMessage(hwnd,0x312,(IntPtr)pauseId,IntPtr.Zero,ref handled);
         if(!paused)throw new InvalidOperationException("Pause shortcut was not dispatched.");
@@ -944,3 +918,6 @@ internal static class Program {
     }
 }
 }
+
+
+
